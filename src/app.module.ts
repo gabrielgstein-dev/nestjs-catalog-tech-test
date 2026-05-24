@@ -7,6 +7,7 @@ import { DatabaseModule } from './shared/infra/database/database.module';
 import { MessagingModule } from './shared/infra/messaging/messaging.module';
 import { HealthModule } from './modules/health/health.module';
 import { SkeletonModule } from './modules/skeleton/skeleton.module';
+import { CatalogModule } from './modules/catalog/catalog.module';
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { SkeletonModule } from './modules/skeleton/skeleton.module';
     MessagingModule,
     HealthModule,
     SkeletonModule,
+    CatalogModule,
   ],
 })
 export class AppModule implements NestModule {
