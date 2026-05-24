@@ -117,4 +117,15 @@ describe('Walking skeleton (e2e)', () => {
   it('returns 400 when the ping id is not a UUID', async () => {
     await request(app.getHttpServer()).get('/skeleton/ping/not-a-uuid').expect(400);
   });
+
+  it('auto-generates a correlationId when the header is absent and echoes it on the response', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/skeleton/ping')
+      .send({ payload: 'no-corr' })
+      .expect(201);
+
+    expect(res.body.correlationId).toEqual(expect.any(String));
+    expect(res.body.correlationId.length).toBeGreaterThan(0);
+    expect(res.headers['x-correlation-id']).toBe(res.body.correlationId);
+  });
 });
