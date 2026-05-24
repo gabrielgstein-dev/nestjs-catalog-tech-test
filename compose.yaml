@@ -1,0 +1,65 @@
+name: catalog
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: catalog-api:${IMAGE_TAG:-local}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: ${PORT:-3000}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-catalog}
+      DB_PASSWORD: ${DB_PASSWORD:-catalog}
+      DB_NAME: ${DB_NAME:-catalog}
+      RABBITMQ_URL: ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672}
+      RABBITMQ_EXCHANGE: ${RABBITMQ_EXCHANGE:-catalog.events}
+    networks:
+      - catalog-net
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${DB_USER:-catalog}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-catalog}
+      POSTGRES_DB: ${DB_NAME:-catalog}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-catalog} -d ${DB_NAME:-catalog}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - catalog-net
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_running"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - catalog-net
+
+volumes:
+  postgres-data:
+  rabbitmq-data:
+
+networks:
+  catalog-net:
+    driver: bridge

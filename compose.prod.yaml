@@ -1,0 +1,22 @@
+# Production overlay. Use with:
+#   docker compose -f compose.yaml -f compose.prod.yaml --env-file .env.prod up -d
+services:
+  app:
+    build:
+      target: production
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: info
+    ports:
+      - "3000:3000"
+    # Migrations are NOT auto-run in prod — run as a separate job:
+    #   docker compose -f compose.yaml -f compose.prod.yaml run --rm app \
+    #     node ./node_modules/typeorm/cli.js -d dist/shared/infra/database/data-source.js migration:run
+    command: ["node", "dist/main.js"]
+
+  postgres:
+    restart: unless-stopped
+
+  rabbitmq:
+    restart: unless-stopped

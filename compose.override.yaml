@@ -1,0 +1,26 @@
+# Loaded automatically by docker compose for local dev.
+services:
+  app:
+    build:
+      target: dev
+    environment:
+      NODE_ENV: development
+      LOG_LEVEL: debug
+    command: sh -c "npm run migration:run && npm run start:dev"
+    volumes:
+      - ./src:/app/src
+      - ./tsconfig.json:/app/tsconfig.json
+      - ./tsconfig.build.json:/app/tsconfig.build.json
+      - ./nest-cli.json:/app/nest-cli.json
+    ports:
+      - "3000:3000"
+
+  postgres:
+    ports:
+      # Host 5433 to avoid clashing with a local Postgres on 5432.
+      - "5433:5432"
+
+  rabbitmq:
+    ports:
+      - "5672:5672"
+      - "15672:15672"
