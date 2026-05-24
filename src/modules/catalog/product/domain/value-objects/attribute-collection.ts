@@ -2,12 +2,6 @@ import { Attribute } from './attribute';
 import { DuplicateAttributeKeyError } from '../errors/duplicate-attribute-key.error';
 import { AttributeKeyNotFoundError } from '../errors/attribute-key-not-found.error';
 
-/**
- * Immutable collection of attributes keyed by `key`. All mutating-looking
- * methods return a NEW collection — instances are values, not containers.
- * Enforces the structural invariant: a product cannot hold two attributes
- * with the same key.
- */
 export class AttributeCollection {
   private readonly byKey: ReadonlyMap<string, Attribute>;
 
