@@ -44,6 +44,9 @@ export class Category extends AggregateRoot {
   }
 
   static rehydrate(props: CategoryRehydrateProps): Category {
+    if (props.parentId && props.parentId.equals(props.id)) {
+      throw new CategoryCannotBeOwnParentError(props.id.value);
+    }
     return new Category(props.id, props.name, props.parentId);
   }
 

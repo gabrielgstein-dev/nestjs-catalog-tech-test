@@ -34,4 +34,8 @@ describe('Attribute', () => {
     expect(Attribute.of('cor', 'azul').equals(Attribute.of('cor', 'verde'))).toBe(false);
     expect(Attribute.of('cor', 'azul').equals(Attribute.of('material', 'azul'))).toBe(false);
   });
+
+  it('keys are case-sensitive: "Cor" and "cor" are distinct (collection treats them as different)', () => {
+    expect(Attribute.of('Cor', 'azul').equals(Attribute.of('cor', 'azul'))).toBe(false);
+  });
 });

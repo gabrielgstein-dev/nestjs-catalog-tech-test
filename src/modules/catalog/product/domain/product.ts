@@ -8,9 +8,13 @@ import { Attribute } from './value-objects/attribute';
 import { AttributeCollection } from './value-objects/attribute-collection';
 import { ProductCannotBeActivatedError } from './errors/product-cannot-be-activated.error';
 import { ArchivedProductIsImmutableError } from './errors/archived-product-is-immutable.error';
+import { ActiveProductInvariantViolatedError } from './errors/active-product-invariant-violated.error';
+import { InvalidProductStateError } from './errors/invalid-product-state.error';
 import { ProductCreated } from './events/product-created.event';
 import { ProductActivated } from './events/product-activated.event';
 import { ProductArchived } from './events/product-archived.event';
+import { ProductRenamed } from './events/product-renamed.event';
+import { ProductDescriptionChanged } from './events/product-description-changed.event';
 import { CategoryAttachedToProduct } from './events/category-attached-to-product.event';
 import { CategoryDetachedFromProduct } from './events/category-detached-from-product.event';
 import { AttributeAdded } from './events/attribute-added.event';
@@ -70,6 +74,21 @@ export class Product extends AggregateRoot {
   }
 
   static rehydrate(props: ProductRehydrateProps): Product {
+    const seen = new Set<string>();
+    for (const c of props.categoryIds) {
+      if (seen.has(c.value)) {
+        throw new InvalidProductStateError('duplicate_category_ids');
+      }
+      seen.add(c.value);
+    }
+    if (props.status === ProductStatus.ACTIVE) {
+      if (props.categoryIds.length === 0) {
+        throw new InvalidProductStateError('active_without_categories');
+      }
+      if (props.attributes.isEmpty()) {
+        throw new InvalidProductStateError('active_without_attributes');
+      }
+    }
     return new Product(
       props.id,
       props.name,
@@ -120,6 +139,7 @@ export class Product extends AggregateRoot {
       return;
     }
     this._name = name;
+    this.recordEvent(new ProductRenamed(this.id.value, name.value));
   }
 
   changeDescription(description: ProductDescription): void {
@@ -127,6 +147,7 @@ export class Product extends AggregateRoot {
       return;
     }
     this._description = description;
+    this.recordEvent(new ProductDescriptionChanged(this.id.value, description.value));
   }
 
   attachCategory(categoryId: CategoryId): void {
@@ -146,6 +167,9 @@ export class Product extends AggregateRoot {
     }
     if (!this._categoryIds.has(categoryId.value)) {
       return;
+    }
+    if (this.isActive() && this._categoryIds.size === 1) {
+      throw new ActiveProductInvariantViolatedError('last_category_removed');
     }
     this._categoryIds.delete(categoryId.value);
     this.recordEvent(new CategoryDetachedFromProduct(this.id.value, categoryId.value));
@@ -174,6 +198,9 @@ export class Product extends AggregateRoot {
   removeAttribute(key: string): void {
     if (this.isArchived()) {
       throw new ArchivedProductIsImmutableError('remove_attribute');
+    }
+    if (this.isActive() && this._attributes.has(key) && this._attributes.size === 1) {
+      throw new ActiveProductInvariantViolatedError('last_attribute_removed');
     }
     this._attributes = this._attributes.remove(key);
     this.recordEvent(new AttributeRemoved(this.id.value, key));

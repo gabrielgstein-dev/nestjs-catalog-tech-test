@@ -8,11 +8,15 @@ import { AttributeCollection } from './value-objects/attribute-collection';
 import { CategoryId } from '../../category/domain/value-objects/category-id';
 import { ProductCannotBeActivatedError } from './errors/product-cannot-be-activated.error';
 import { ArchivedProductIsImmutableError } from './errors/archived-product-is-immutable.error';
+import { ActiveProductInvariantViolatedError } from './errors/active-product-invariant-violated.error';
+import { InvalidProductStateError } from './errors/invalid-product-state.error';
 import { DuplicateAttributeKeyError } from './errors/duplicate-attribute-key.error';
 import { AttributeKeyNotFoundError } from './errors/attribute-key-not-found.error';
 import { ProductCreated } from './events/product-created.event';
 import { ProductActivated } from './events/product-activated.event';
 import { ProductArchived } from './events/product-archived.event';
+import { ProductRenamed } from './events/product-renamed.event';
+import { ProductDescriptionChanged } from './events/product-description-changed.event';
 import { CategoryAttachedToProduct } from './events/category-attached-to-product.event';
 import { CategoryDetachedFromProduct } from './events/category-detached-from-product.event';
 import { AttributeAdded } from './events/attribute-added.event';
@@ -223,10 +227,29 @@ describe('Product', () => {
   });
 
   describe('changeDescription', () => {
-    it('updates the description', () => {
+    it('updates the description and emits ProductDescriptionChanged', () => {
       const p = buildDraft();
+      p.pullDomainEvents();
+
       p.changeDescription(pdesc('new'));
+
       expect(p.description.value).toBe('new');
+      const e = p.pullDomainEvents()[0] as ProductDescriptionChanged;
+      expect(e).toBeInstanceOf(ProductDescriptionChanged);
+      expect(e.aggregateId).toBe('p1');
+      expect(e.description).toBe('new');
+      expect(e.eventName).toBe(ProductDescriptionChanged.EVENT_NAME);
+    });
+
+    it('emits null on the event when description is cleared', () => {
+      const p = buildDraft();
+      p.changeDescription(pdesc('first'));
+      p.pullDomainEvents();
+
+      p.changeDescription(pdesc(null));
+
+      const e = p.pullDomainEvents()[0] as ProductDescriptionChanged;
+      expect(e.description).toBeNull();
     });
 
     it('is allowed on ARCHIVED products', () => {
@@ -235,7 +258,7 @@ describe('Product', () => {
       expect(p.description.value).toBe('still mutable');
     });
 
-    it('is a no-op when value does not change', () => {
+    it('is a no-op when value does not change (no event emitted)', () => {
       const p = buildDraft();
       p.changeDescription(pdesc('x'));
       p.pullDomainEvents();
@@ -246,16 +269,32 @@ describe('Product', () => {
   });
 
   describe('rename', () => {
-    it('renames a DRAFT product', () => {
+    it('renames a DRAFT product and emits ProductRenamed', () => {
       const p = buildDraft();
+      p.pullDomainEvents();
+
       p.rename(pname('Novo nome'));
+
       expect(p.name.value).toBe('Novo nome');
+      const e = p.pullDomainEvents()[0] as ProductRenamed;
+      expect(e).toBeInstanceOf(ProductRenamed);
+      expect(e.aggregateId).toBe('p1');
+      expect(e.name).toBe('Novo nome');
+      expect(e.eventName).toBe(ProductRenamed.EVENT_NAME);
     });
 
-    it('renames an ACTIVE product', () => {
+    it('renames an ACTIVE product and emits ProductRenamed', () => {
       const p = buildActive();
       p.rename(pname('Novo nome'));
       expect(p.name.value).toBe('Novo nome');
+      expect(p.pullDomainEvents()[0]).toBeInstanceOf(ProductRenamed);
+    });
+
+    it('is a no-op when renamed to the same value (no event emitted)', () => {
+      const p = buildDraft();
+      p.pullDomainEvents();
+      p.rename(pname('Cadeira'));
+      expect(p.pullDomainEvents()).toHaveLength(0);
     });
 
     it('rejects rename on ARCHIVED with ArchivedProductIsImmutableError', () => {
@@ -394,6 +433,144 @@ describe('Product', () => {
         expect(err).toBeInstanceOf(ArchivedProductIsImmutableError);
         expect((err as ArchivedProductIsImmutableError).operation).toBe('attach_category');
       }
+    });
+  });
+
+  describe('ACTIVE invariant continuity', () => {
+    it('blocks removing the last category from an ACTIVE product', () => {
+      const p = buildActive();
+      try {
+        p.detachCategory(cid('c1'));
+        fail('should have thrown');
+      } catch (err) {
+        expect(err).toBeInstanceOf(ActiveProductInvariantViolatedError);
+        expect((err as ActiveProductInvariantViolatedError).reason).toBe('last_category_removed');
+      }
+    });
+
+    it('blocks removing the last attribute from an ACTIVE product', () => {
+      const p = buildActive();
+      try {
+        p.removeAttribute('cor');
+        fail('should have thrown');
+      } catch (err) {
+        expect(err).toBeInstanceOf(ActiveProductInvariantViolatedError);
+        expect((err as ActiveProductInvariantViolatedError).reason).toBe('last_attribute_removed');
+      }
+    });
+
+    it('allows removing a category when others remain on ACTIVE', () => {
+      const p = buildActive();
+      p.attachCategory(cid('c2'));
+      p.pullDomainEvents();
+
+      expect(() => p.detachCategory(cid('c1'))).not.toThrow();
+      expect(p.categoryIds.map((c) => c.value)).toEqual(['c2']);
+    });
+
+    it('allows removing an attribute when others remain on ACTIVE', () => {
+      const p = buildActive();
+      p.addAttribute(attr('material', 'metal'));
+      p.pullDomainEvents();
+
+      expect(() => p.removeAttribute('cor')).not.toThrow();
+      expect(p.attributes.has('cor')).toBe(false);
+    });
+
+    it('does NOT enforce this rule on DRAFT — emptying is allowed', () => {
+      const p = buildDraft();
+      p.attachCategory(cid('c1'));
+      p.addAttribute(attr('cor', 'azul'));
+      p.pullDomainEvents();
+
+      expect(() => p.detachCategory(cid('c1'))).not.toThrow();
+      expect(() => p.removeAttribute('cor')).not.toThrow();
+    });
+
+    it('detaching a non-attached category on ACTIVE is still a no-op (does not trip the rule)', () => {
+      const p = buildActive();
+      p.pullDomainEvents();
+      expect(() => p.detachCategory(cid('does-not-exist'))).not.toThrow();
+      expect(p.pullDomainEvents()).toHaveLength(0);
+    });
+  });
+
+  describe('rehydrate validations', () => {
+    it('rejects duplicate category ids', () => {
+      try {
+        Product.rehydrate({
+          id: pid('p1'),
+          name: pname(),
+          description: pdesc(null),
+          status: ProductStatus.DRAFT,
+          categoryIds: [cid('c1'), cid('c1')],
+          attributes: AttributeCollection.empty(),
+        });
+        fail('should have thrown');
+      } catch (err) {
+        expect(err).toBeInstanceOf(InvalidProductStateError);
+        expect((err as InvalidProductStateError).reason).toBe('duplicate_category_ids');
+      }
+    });
+
+    it('rejects ACTIVE without categories', () => {
+      try {
+        Product.rehydrate({
+          id: pid('p1'),
+          name: pname(),
+          description: pdesc(null),
+          status: ProductStatus.ACTIVE,
+          categoryIds: [],
+          attributes: AttributeCollection.of([attr('cor', 'azul')]),
+        });
+        fail('should have thrown');
+      } catch (err) {
+        expect(err).toBeInstanceOf(InvalidProductStateError);
+        expect((err as InvalidProductStateError).reason).toBe('active_without_categories');
+      }
+    });
+
+    it('rejects ACTIVE without attributes', () => {
+      try {
+        Product.rehydrate({
+          id: pid('p1'),
+          name: pname(),
+          description: pdesc(null),
+          status: ProductStatus.ACTIVE,
+          categoryIds: [cid('c1')],
+          attributes: AttributeCollection.empty(),
+        });
+        fail('should have thrown');
+      } catch (err) {
+        expect(err).toBeInstanceOf(InvalidProductStateError);
+        expect((err as InvalidProductStateError).reason).toBe('active_without_attributes');
+      }
+    });
+
+    it('allows DRAFT with empty categories and attributes', () => {
+      expect(() =>
+        Product.rehydrate({
+          id: pid('p1'),
+          name: pname(),
+          description: pdesc(null),
+          status: ProductStatus.DRAFT,
+          categoryIds: [],
+          attributes: AttributeCollection.empty(),
+        }),
+      ).not.toThrow();
+    });
+
+    it('allows ARCHIVED with empty categories and attributes (terminal: any state preserved)', () => {
+      expect(() =>
+        Product.rehydrate({
+          id: pid('p1'),
+          name: pname(),
+          description: pdesc(null),
+          status: ProductStatus.ARCHIVED,
+          categoryIds: [],
+          attributes: AttributeCollection.empty(),
+        }),
+      ).not.toThrow();
     });
   });
 });

@@ -26,6 +26,13 @@ describe('AttributeCollection', () => {
     );
   });
 
+  it('treats keys with different case as distinct (case-sensitive: "Cor" and "cor" coexist)', () => {
+    const c = AttributeCollection.of([attr('Cor', 'azul'), attr('cor', 'verde')]);
+    expect(c.size).toBe(2);
+    expect(c.get('Cor')?.value).toBe('azul');
+    expect(c.get('cor')?.value).toBe('verde');
+  });
+
   describe('add', () => {
     it('returns a new collection with the attribute', () => {
       const c1 = AttributeCollection.empty();

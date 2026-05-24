@@ -24,4 +24,8 @@ describe('ProductName', () => {
     expect(ProductName.of('a').equals(ProductName.of('a'))).toBe(true);
     expect(ProductName.of('a').equals(ProductName.of('b'))).toBe(false);
   });
+
+  it('is case-sensitive: "Cadeira" !== "cadeira" (uniqueness checks downstream must agree)', () => {
+    expect(ProductName.of('Cadeira').equals(ProductName.of('cadeira'))).toBe(false);
+  });
 });

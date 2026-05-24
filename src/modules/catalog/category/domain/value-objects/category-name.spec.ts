@@ -24,4 +24,8 @@ describe('CategoryName', () => {
     expect(CategoryName.of('a').equals(CategoryName.of('a'))).toBe(true);
     expect(CategoryName.of('a').equals(CategoryName.of('b'))).toBe(false);
   });
+
+  it('is case-sensitive: "Eletronicos" !== "eletronicos"', () => {
+    expect(CategoryName.of('Eletronicos').equals(CategoryName.of('eletronicos'))).toBe(false);
+  });
 });

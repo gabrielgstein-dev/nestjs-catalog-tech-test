@@ -57,6 +57,16 @@ describe('Category', () => {
       expect(cat.pullDomainEvents()).toHaveLength(0);
       expect(cat.parentId?.value).toBe('p1');
     });
+
+    it('rejects rehydration where parentId equals the own id (defensive against DB corruption)', () => {
+      expect(() =>
+        Category.rehydrate({
+          id: id('c1'),
+          name: name('x'),
+          parentId: id('c1'),
+        }),
+      ).toThrow(CategoryCannotBeOwnParentError);
+    });
   });
 
   describe('rename', () => {
