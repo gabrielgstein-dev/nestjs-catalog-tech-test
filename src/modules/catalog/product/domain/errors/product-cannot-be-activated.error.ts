@@ -4,7 +4,8 @@ export type ProductCannotBeActivatedReason =
   | 'missing_categories'
   | 'missing_attributes'
   | 'already_active'
-  | 'archived';
+  | 'archived'
+  | 'name_taken';
 
 const messageFor = (reason: ProductCannotBeActivatedReason): string => {
   switch (reason) {
@@ -16,6 +17,8 @@ const messageFor = (reason: ProductCannotBeActivatedReason): string => {
       return 'Product cannot be activated: it is already active';
     case 'archived':
       return 'Product cannot be activated: it is archived (terminal state)';
+    case 'name_taken':
+      return 'Product cannot be activated: another non-archived product already uses this name';
   }
 };
 
