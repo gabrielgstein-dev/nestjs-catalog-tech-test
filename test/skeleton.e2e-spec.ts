@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-var-requires */
 import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
@@ -34,7 +33,6 @@ describe('Walking skeleton (e2e)', () => {
     process.env.RABBITMQ_URL = rabbit.getAmqpUrl();
     process.env.RABBITMQ_EXCHANGE = 'catalog.events';
 
-    // Run migrations against the freshly booted Postgres.
     const migrationDs = new DataSource({
       type: 'postgres',
       host: process.env.DB_HOST!,
@@ -50,8 +48,6 @@ describe('Walking skeleton (e2e)', () => {
     await migrationDs.runMigrations();
     await migrationDs.destroy();
 
-    // Lazy-require AppModule AFTER env vars are populated, so the
-    // @nestjs/config validation in AppConfigModule succeeds.
     const { AppModule } = await import('../src/app.module');
     const { Logger } = await import('nestjs-pino');
 
@@ -85,7 +81,6 @@ describe('Walking skeleton (e2e)', () => {
 
     const pingId: string = createRes.body.id;
 
-    // Poll GET until the consumer has acked (RabbitMQ delivery is async).
     let ack: { status: string; ackedAt: string } | null = null;
     const deadline = Date.now() + 15_000;
     while (Date.now() < deadline) {
@@ -111,5 +106,15 @@ describe('Walking skeleton (e2e)', () => {
     expect(res.body.status).toBe('ok');
     expect(res.body.info?.database?.status).toBe('up');
     expect(res.body.info?.rabbitmq?.status).toBe('up');
+  });
+
+  it('returns 404 when fetching a non-existent ping', async () => {
+    const missing = '00000000-0000-4000-8000-000000000000';
+    const res = await request(app.getHttpServer()).get(`/skeleton/ping/${missing}`).expect(404);
+    expect(res.body.message).toMatch(/not found/i);
+  });
+
+  it('returns 400 when the ping id is not a UUID', async () => {
+    await request(app.getHttpServer()).get('/skeleton/ping/not-a-uuid').expect(400);
   });
 });
