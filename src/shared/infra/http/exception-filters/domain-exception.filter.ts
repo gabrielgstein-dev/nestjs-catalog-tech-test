@@ -15,7 +15,7 @@ import { CORRELATION_ID_HEADER } from '../correlation-id.constants';
 import { AppConfigService } from '../../../config/app-config.service';
 import { ErrorResponse } from './error-response.contract';
 
-const NOT_FOUND_CODE_SUFFIX = '.not_found';
+const NOT_FOUND_CODE_SUFFIX = 'not_found';
 
 @Catch()
 export class DomainExceptionFilter implements ExceptionFilter {
