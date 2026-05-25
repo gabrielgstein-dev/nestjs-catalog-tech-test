@@ -25,6 +25,10 @@ describe('ProductDescription', () => {
     expect(() => ProductDescription.of(long)).toThrow();
   });
 
+  it('rejects non-string non-null input at the runtime boundary (defensive vs JS callers)', () => {
+    expect(() => ProductDescription.of(123 as unknown as string)).toThrow(/must be a string/);
+  });
+
   it('compares by value', () => {
     expect(ProductDescription.of('a').equals(ProductDescription.of('a'))).toBe(true);
     expect(ProductDescription.of(null).equals(ProductDescription.of(null))).toBe(true);

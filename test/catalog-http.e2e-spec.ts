@@ -339,6 +339,14 @@ describe('Catalog HTTP API (e2e)', () => {
       expect(res.body.items.map((i: { name: string }) => i.name)).toEqual(['A', 'B']);
     });
 
+    it('GET /categories with no query params uses the default limit/offset', async () => {
+      await request(server).post('/categories').send({ name: 'Alpha' }).expect(201);
+      const res = await request(server).get('/categories').expect(200);
+      expect(res.body.limit).toBe(50);
+      expect(res.body.offset).toBe(0);
+      expect(res.body.total).toBe(1);
+    });
+
     it('GET /products returns a page filterable by status', async () => {
       await request(server).post('/products').send({ name: 'P1' }).expect(201);
       await request(server).post('/products').send({ name: 'P2' }).expect(201);
@@ -346,6 +354,27 @@ describe('Catalog HTTP API (e2e)', () => {
       expect(draft.body.total).toBe(2);
       const active = await request(server).get('/products?status=ACTIVE').expect(200);
       expect(active.body.total).toBe(0);
+    });
+
+    it('GET /products with no query params lists every product (default limit/offset, no status filter)', async () => {
+      await request(server).post('/products').send({ name: 'P-default' }).expect(201);
+      const res = await request(server).get('/products').expect(200);
+      expect(res.body.limit).toBe(50);
+      expect(res.body.offset).toBe(0);
+      expect(res.body.total).toBe(1);
+    });
+
+    it('GET /products with a non-numeric limit falls back to the default (NaN guard)', async () => {
+      await request(server).post('/products').send({ name: 'P-guard' }).expect(201);
+      const res = await request(server).get('/products?limit=foo&offset=bar').expect(200);
+      expect(res.body.limit).toBe(50);
+      expect(res.body.offset).toBe(0);
+    });
+
+    it('GET /products with an unknown status string treats it as no filter', async () => {
+      await request(server).post('/products').send({ name: 'P-unknown' }).expect(201);
+      const res = await request(server).get('/products?status=BANANA').expect(200);
+      expect(res.body.total).toBe(1);
     });
   });
 

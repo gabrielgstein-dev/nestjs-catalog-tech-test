@@ -28,4 +28,12 @@ describe('CategoryName', () => {
   it('is case-sensitive: "Eletronicos" !== "eletronicos"', () => {
     expect(CategoryName.of('Eletronicos').equals(CategoryName.of('eletronicos'))).toBe(false);
   });
+
+  it('rejects non-string input at the runtime boundary (defensive vs JS callers)', () => {
+    expect(() => CategoryName.of(42 as unknown as string)).toThrow(/must be a string/);
+  });
+
+  it('exposes its value via toString (used in log envelopes)', () => {
+    expect(CategoryName.of('X').toString()).toBe('X');
+  });
 });

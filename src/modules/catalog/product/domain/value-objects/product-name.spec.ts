@@ -10,6 +10,11 @@ describe('ProductName', () => {
     expect(() => ProductName.of('   ')).toThrow();
   });
 
+  it('rejects non-string input at the runtime boundary (defensive vs JS callers)', () => {
+    expect(() => ProductName.of(123 as unknown as string)).toThrow(/must be a string/);
+    expect(() => ProductName.of(null as unknown as string)).toThrow(/must be a string/);
+  });
+
   it('rejects values exceeding max length', () => {
     const long = 'x'.repeat(ProductName.MAX_LENGTH + 1);
     expect(() => ProductName.of(long)).toThrow();
@@ -27,5 +32,9 @@ describe('ProductName', () => {
 
   it('is case-sensitive: "Cadeira" !== "cadeira" (uniqueness checks downstream must agree)', () => {
     expect(ProductName.of('Cadeira').equals(ProductName.of('cadeira'))).toBe(false);
+  });
+
+  it('exposes its value via toString (used in log envelopes)', () => {
+    expect(ProductName.of('Cadeira').toString()).toBe('Cadeira');
   });
 });

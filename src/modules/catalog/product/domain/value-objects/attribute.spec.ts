@@ -22,6 +22,11 @@ describe('Attribute', () => {
     expect(() => Attribute.of('k', 'x'.repeat(Attribute.VALUE_MAX_LENGTH + 1))).toThrow();
   });
 
+  it('rejects non-string key/value at the runtime boundary (defensive vs JS callers)', () => {
+    expect(() => Attribute.of(1 as unknown as string, 'v')).toThrow(/key must be a string/);
+    expect(() => Attribute.of('k', 1 as unknown as string)).toThrow(/value must be a string/);
+  });
+
   it('withValue keeps the key and replaces the value', () => {
     const a = Attribute.of('cor', 'azul');
     const b = a.withValue('verde');
