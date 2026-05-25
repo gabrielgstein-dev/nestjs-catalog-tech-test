@@ -1,7 +1,7 @@
 import { Global, Module } from '@nestjs/common';
 import { RabbitMQModule } from '@golevelup/nestjs-rabbitmq';
 import { AppConfigService } from '../../config/app-config.service';
-import { AUDIT_DLX } from '../../../modules/audit/infra/messaging/audit-routing';
+import { AUDIT_DLQ, AUDIT_DLX } from '../../../modules/audit/infra/messaging/audit-routing';
 
 @Global()
 @Module({
@@ -19,6 +19,19 @@ import { AUDIT_DLX } from '../../../modules/audit/infra/messaging/audit-routing'
           {
             name: AUDIT_DLX,
             type: 'topic',
+            options: { durable: true },
+          },
+        ],
+        // Declare the dead-letter queue and its binding to the DLX up-front,
+        // so messages dead-lettered by the audit consumer always land somewhere
+        // — even during reconnection windows where the consumer's first
+        // delivery might run before any lazy topology setup.
+        queues: [
+          {
+            name: AUDIT_DLQ,
+            exchange: AUDIT_DLX,
+            routingKey: '#',
+            createQueueIfNotExists: true,
             options: { durable: true },
           },
         ],

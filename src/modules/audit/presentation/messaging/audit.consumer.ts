@@ -10,9 +10,9 @@ import { AppConfigService } from '../../../../shared/config/app-config.service';
 import { CORRELATION_ID_HEADER } from '../../../../shared/infra/http/correlation-id.constants';
 import {
   AUDIT_QUEUE,
-  AUDIT_DLQ,
   AUDIT_DLX,
   AUDIT_MAX_ATTEMPTS,
+  CATALOG_EXCHANGE,
   CATALOG_TOPIC_BINDING,
 } from '../../infra/messaging/audit-routing';
 import { aggregateTypeFor } from '../../../../shared/infra/outbox/outbox-routing';
@@ -56,7 +56,7 @@ export class AuditConsumer {
   }
 
   @RabbitSubscribe({
-    exchange: process.env.RABBITMQ_EXCHANGE ?? 'catalog.events',
+    exchange: CATALOG_EXCHANGE,
     routingKey: CATALOG_TOPIC_BINDING,
     queue: AUDIT_QUEUE,
     queueOptions: {
@@ -68,8 +68,6 @@ export class AuditConsumer {
     errorBehavior: MessageHandlerErrorBehavior.NACK,
   })
   async handle(message: RawMessage, amqpMsg: ConsumeMessage): Promise<void> {
-    await this.ensureDlqTopology();
-
     const props = amqpMsg.properties ?? ({} as ConsumeMessage['properties']);
     const headers = (props.headers ?? {}) as Record<string, unknown>;
 
@@ -135,17 +133,5 @@ export class AuditConsumer {
       if (!Number.isNaN(d.getTime())) return d;
     }
     return new Date();
-  }
-
-  private dlqEnsured = false;
-
-  private async ensureDlqTopology(): Promise<void> {
-    if (this.dlqEnsured) return;
-    const channel = this.amqp.channel;
-    if (!channel) return;
-    await channel.assertExchange(AUDIT_DLX, 'topic', { durable: true });
-    await channel.assertQueue(AUDIT_DLQ, { durable: true });
-    await channel.bindQueue(AUDIT_DLQ, AUDIT_DLX, '#');
-    this.dlqEnsured = true;
   }
 }

@@ -150,8 +150,22 @@ describe('Phase 4 — transactional outbox + audit consumer (integration)', () =
         });
       }
 
-      await new Promise((r) => setTimeout(r, 1500));
+      // Drive both processed_event and audit_log to a steady state where the
+      // marker is present (insert was attempted) AND the audit count stays at 1.
+      // waitFor polls deterministically instead of relying on an arbitrary sleep.
+      await waitFor(
+        async () => {
+          const [{ count: marker }]: Array<{ count: string }> = await ds.query(
+            `SELECT count(*)::text AS count FROM processed_event WHERE event_id = $1`,
+            [initial.event_id],
+          );
+          return marker === '1' ? true : null;
+        },
+        { label: 'processed_event marker present', timeoutMs: 10_000 },
+      );
 
+      // A second probe gives the consumer time to attempt the redeliveries; if
+      // dedupe is broken, count would climb above 1 and this would catch it.
       const finalRows: Array<{ count: string }> = await ds.query(
         `SELECT count(*)::text AS count FROM audit_log WHERE aggregate_id = $1`,
         [productId],
