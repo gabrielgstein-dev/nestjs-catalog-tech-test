@@ -20,5 +20,8 @@ npm-debug.log*
 coverage/
 .nyc_output/
 
+reports/
+.stryker-tmp/
+
 .docker/
 

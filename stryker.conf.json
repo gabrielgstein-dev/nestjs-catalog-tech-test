@@ -1,0 +1,24 @@
+{
+  "$schema": "./node_modules/@stryker-mutator/core/schema/stryker-schema.json",
+  "_comment": "Stryker config — mutates ONLY the domain layer (where mutation score gives the most signal). Use jest unit project (no e2e) for speed.",
+  "packageManager": "npm",
+  "reporters": ["progress", "clear-text", "html"],
+  "testRunner": "jest",
+  "jest": {
+    "projectType": "custom",
+    "configFile": "stryker.jest.config.cjs"
+  },
+  "coverageAnalysis": "perTest",
+  "mutate": [
+    "src/modules/catalog/category/domain/**/*.ts",
+    "src/modules/catalog/product/domain/**/*.ts",
+    "src/shared/domain/**/*.ts",
+    "!src/**/*.spec.ts",
+    "!src/**/events/*.ts",
+    "!src/**/ports/*.ts"
+  ],
+  "thresholds": { "high": 85, "low": 70, "break": 0 },
+  "timeoutMS": 60000,
+  "concurrency": 4,
+  "tempDirName": ".stryker-tmp"
+}

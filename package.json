@@ -57,6 +57,8 @@
     "@nestjs/cli": "10.4.9",
     "@nestjs/schematics": "10.2.3",
     "@nestjs/testing": "10.4.22",
+    "@stryker-mutator/core": "^8.7.1",
+    "@stryker-mutator/jest-runner": "^8.7.1",
     "@testcontainers/postgresql": "^12.0.0",
     "@testcontainers/rabbitmq": "^12.0.0",
     "@types/amqplib": "^0.10.8",
