@@ -7,14 +7,6 @@ import { TransactionContext } from '../../application/transaction-context';
 import { OUTBOX_STATUS } from './outbox.entity';
 import { aggregateTypeFor } from './outbox-routing';
 
-/**
- * Persists domain events into the `outbox` table inside the caller's transaction.
- *
- * Must be invoked from within a UnitOfWork — otherwise we cannot guarantee the
- * critical invariant (mutation + outbox row commit atomically). If no ambient
- * transaction is present, the call throws on purpose so atomicity bugs surface
- * at the boundary instead of being lost as fire-and-forget writes.
- */
 @Injectable()
 export class OutboxEventPublisher implements DomainEventPublisher {
   constructor(private readonly logger: PinoLogger) {
@@ -35,8 +27,6 @@ export class OutboxEventPublisher implements DomainEventPublisher {
     }
 
     const correlationId = CorrelationContext.get() ?? null;
-    // Raw INSERT keeps the jsonb payload as a plain object and sidesteps
-    // TypeORM's deep-partial typing, which would otherwise reject a Record value.
     for (const event of events) {
       await manager.query(
         `INSERT INTO outbox (aggregate_type, aggregate_id, event_type, payload, status, occurred_at, correlation_id)

@@ -47,7 +47,6 @@ export const startMessagingTestBed = async (
   process.env.RABBITMQ_URL = rabbit.getAmqpUrl();
   process.env.RABBITMQ_EXCHANGE = 'catalog.events';
 
-  // Run migrations on a throwaway DataSource so the app boots against a ready schema.
   const migrationDs = new DataSource({
     type: 'postgres',
     host: process.env.DB_HOST,
@@ -93,8 +92,6 @@ export const startMessagingTestBed = async (
   const dataSource = app.get(DataSource);
   const amqp = app.get(AmqpConnection);
 
-  // Wait until the AMQP connection has a usable channel before exposing the
-  // bed — otherwise tests may run before the relay/consumer have wired up.
   const deadline = Date.now() + 15_000;
   while (Date.now() < deadline) {
     if (amqp.channel && amqp.connected) break;

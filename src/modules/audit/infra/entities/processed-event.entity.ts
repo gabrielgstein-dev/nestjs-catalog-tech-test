@@ -1,9 +1,5 @@
 import { CreateDateColumn, Entity, PrimaryColumn } from 'typeorm';
 
-/**
- * Inbox table: dedupe by (event_id, consumer) so the same event delivered
- * twice (retry/redelivery) is recorded exactly once per consumer.
- */
 @Entity({ name: 'processed_event' })
 export class ProcessedEventEntity {
   @PrimaryColumn({ type: 'uuid', name: 'event_id' })

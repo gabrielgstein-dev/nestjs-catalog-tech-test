@@ -22,9 +22,6 @@ import { UNIT_OF_WORK } from '../src/shared/application/unit-of-work.port';
 import { InMemoryDomainEventPublisher } from '../src/shared/application/__test-fixtures__/in-memory-domain-event-publisher';
 import { PassThroughUnitOfWork } from '../src/shared/application/__test-fixtures__/pass-through-unit-of-work';
 
-// In production these come from OutboxModule and DatabaseModule (both @Global).
-// Here we stub them via a Global test module so CatalogModule's handlers resolve
-// without us pulling the full app wiring.
 @Global()
 @Module({
   providers: [

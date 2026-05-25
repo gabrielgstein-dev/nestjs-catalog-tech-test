@@ -48,7 +48,6 @@ export class OutboxRelay implements OnModuleInit, OnModuleDestroy {
     await this.stop();
   }
 
-  /** Visible for tests: triggers a tick synchronously. */
   async drain(): Promise<number> {
     return this.tick();
   }

@@ -22,10 +22,6 @@ import { AUDIT_DLQ, AUDIT_DLX } from '../../../modules/audit/infra/messaging/aud
             options: { durable: true },
           },
         ],
-        // Declare the dead-letter queue and its binding to the DLX up-front,
-        // so messages dead-lettered by the audit consumer always land somewhere
-        // — even during reconnection windows where the consumer's first
-        // delivery might run before any lazy topology setup.
         queues: [
           {
             name: AUDIT_DLQ,
@@ -35,9 +31,6 @@ import { AUDIT_DLQ, AUDIT_DLX } from '../../../modules/audit/infra/messaging/aud
             options: { durable: true },
           },
         ],
-        // Outbox decouples the write path from the broker: app boots and accepts
-        // mutations even if RabbitMQ is unreachable. The relay drains pending
-        // outbox rows as soon as a connection is (re)established.
         connectionInitOptions: { wait: false },
         enableControllerDiscovery: true,
       }),

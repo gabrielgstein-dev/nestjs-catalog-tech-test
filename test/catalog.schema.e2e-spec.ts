@@ -235,12 +235,9 @@ describe('Catalog schema (integration)', () => {
   // ── CRÍTICO 5 — migration down() ─────────────────────────────────────────
 
   it('migration down() drops all catalog tables and reverts cleanly', async () => {
-    // Undo every migration applied after CatalogTables (audit_log, processed_event,
-    // outbox.last_error) and CatalogTables itself, so we can prove its down() does
-    // drop the catalog tables.
-    await bed.dataSource.undoLastMigration(); // AuditTables
-    await bed.dataSource.undoLastMigration(); // OutboxRetryMeta
-    await bed.dataSource.undoLastMigration(); // CatalogTables
+    await bed.dataSource.undoLastMigration();
+    await bed.dataSource.undoLastMigration();
+    await bed.dataSource.undoLastMigration();
 
     const rows: Array<{ table_name: string }> = await bed.dataSource.query(
       `SELECT table_name FROM information_schema.tables
@@ -250,7 +247,6 @@ describe('Catalog schema (integration)', () => {
     );
     expect(rows).toHaveLength(0);
 
-    // Re-run so the rest of the suite can keep working
     await bed.dataSource.runMigrations();
   });
 

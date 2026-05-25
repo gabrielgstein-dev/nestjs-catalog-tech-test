@@ -18,7 +18,7 @@ const purgeDlq = async (amqp: AmqpConnection): Promise<void> => {
   try {
     await ch.purgeQueue(AUDIT_DLQ);
   } catch {
-    // queue may not exist yet
+    return;
   }
 };
 
@@ -150,9 +150,6 @@ describe('Phase 4 — transactional outbox + audit consumer (integration)', () =
         });
       }
 
-      // Drive both processed_event and audit_log to a steady state where the
-      // marker is present (insert was attempted) AND the audit count stays at 1.
-      // waitFor polls deterministically instead of relying on an arbitrary sleep.
       await waitFor(
         async () => {
           const [{ count: marker }]: Array<{ count: string }> = await ds.query(
@@ -164,8 +161,6 @@ describe('Phase 4 — transactional outbox + audit consumer (integration)', () =
         { label: 'processed_event marker present', timeoutMs: 10_000 },
       );
 
-      // A second probe gives the consumer time to attempt the redeliveries; if
-      // dedupe is broken, count would climb above 1 and this would catch it.
       const finalRows: Array<{ count: string }> = await ds.query(
         `SELECT count(*)::text AS count FROM audit_log WHERE aggregate_id = $1`,
         [productId],
@@ -237,9 +232,6 @@ describe('Phase 4 — transactional outbox + audit consumer (integration)', () =
       const amqp = bed.app.get(AmqpConnection);
       await purgeDlq(amqp);
 
-      // Force the audit consumer to throw on every invocation so the retry/N→DLQ
-      // path is exercised end-to-end. Spy is restored at the end so the rest of
-      // the suite still sees the real use case.
       const useCase = bed.app.get(ProcessDomainEventUseCase);
       const spy = jest
         .spyOn(useCase, 'execute')
@@ -268,8 +260,6 @@ describe('Phase 4 — transactional outbox + audit consumer (integration)', () =
 
         expect(dlqMsg.properties.messageId).toBeDefined();
         const attempts = (dlqMsg.properties.headers ?? {})['x-attempts'];
-        // The last republish keeps x-attempts < N; once we re-throw at attempts >= N
-        // the message is nacked, so the dead-lettered copy carries the previous count.
         expect(typeof attempts).toBe('number');
         expect(attempts).toBeGreaterThanOrEqual(AUDIT_MAX_ATTEMPTS - 1);
       } finally {

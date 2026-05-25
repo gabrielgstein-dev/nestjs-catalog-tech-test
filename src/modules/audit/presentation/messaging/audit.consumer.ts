@@ -31,19 +31,6 @@ interface RawMessage {
   [k: string]: unknown;
 }
 
-/**
- * Topology owned by this consumer (declared via @RabbitSubscribe):
- *   - exchange `catalog.events` (topic) — already declared in MessagingModule
- *   - queue `audit.events.q` bound with `catalog.#`, dead-letters to `catalog.events.dlx`
- *   - DLX `catalog.events.dlx` (topic, durable)
- *   - DLQ `audit.events.dlq` bound with `#`
- *
- * Retry policy: the consumer republishes the message to its own queue with an
- * incremented `x-attempts` header up to {@link AUDIT_MAX_ATTEMPTS}; on the Nth
- * failure the original message is left unacked and NACKed without requeue, so
- * the broker dead-letters it to {@link AUDIT_DLQ}. Idempotency is enforced
- * upstream by the inbox (processed_event table).
- */
 @Injectable()
 export class AuditConsumer {
   constructor(

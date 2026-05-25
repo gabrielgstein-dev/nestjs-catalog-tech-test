@@ -23,7 +23,6 @@ export class ProductRepositoryTypeOrm implements ProductRepository {
       await this.saveWith(ambient, row);
       return;
     }
-    // No outer UoW: still need a transaction to keep delete-then-insert atomic.
     await this.dataSource.transaction((m) => this.saveWith(m, row));
   }
 
@@ -39,7 +38,6 @@ export class ProductRepositoryTypeOrm implements ProductRepository {
       [row.product.id, row.product.name, row.product.description, row.product.status],
     );
 
-    // Replace-all strategy for child collections: small aggregate, simple invariants.
     await manager.delete(ProductAttributeEntity, { productId: row.product.id });
     if (row.attributes.length > 0) {
       await manager

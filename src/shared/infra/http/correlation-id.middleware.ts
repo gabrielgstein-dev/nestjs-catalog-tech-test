@@ -23,8 +23,6 @@ export class CorrelationIdMiddleware implements NestMiddleware {
     r[CORRELATION_ID_KEY] = correlationId;
     res.setHeader(CORRELATION_ID_HEADER, correlationId);
 
-    // Propagates the correlationId to anything running in this request's async scope —
-    // outbox writer, repositories, downstream handlers — without threading it as a parameter.
     CorrelationContext.run(correlationId, () => next());
   }
 }

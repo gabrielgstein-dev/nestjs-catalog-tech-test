@@ -9,7 +9,6 @@ export class TypeOrmUnitOfWork implements UnitOfWork {
 
   async run<T>(fn: () => Promise<T>): Promise<T> {
     if (TransactionContext.get()) {
-      // Already inside a UoW: reuse the ambient transaction (nested call).
       return fn();
     }
     return this.dataSource.transaction(async (manager) => {

@@ -30,8 +30,6 @@ export class ProcessDomainEventUseCase {
 
   async execute(input: DomainEventMessage): Promise<ProcessDomainEventResult> {
     return this.dataSource.transaction(async (manager) => {
-      // Inbox-style dedupe: insert the (event_id, consumer) marker first.
-      // ON CONFLICT DO NOTHING ⇒ second delivery short-circuits without writing audit_log.
       const inserted = await manager.query(
         `INSERT INTO processed_event (event_id, consumer)
               VALUES ($1, $2)
@@ -47,8 +45,6 @@ export class ProcessDomainEventUseCase {
         return { recorded: false };
       }
 
-      // Raw INSERT keeps the jsonb payload as a plain object (TypeORM's
-      // QueryDeepPartialEntity typing rejects Record<string, unknown>).
       await manager.query(
         `INSERT INTO audit_log
               (event_id, aggregate_type, aggregate_id, event_type, payload, correlation_id, occurred_at)
@@ -64,7 +60,6 @@ export class ProcessDomainEventUseCase {
         ],
       );
 
-      // AuditLogEntity/ProcessedEventEntity stay referenced so TypeORM autoloads them.
       void AuditLogEntity;
       void ProcessedEventEntity;
 
