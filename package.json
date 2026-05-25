@@ -15,10 +15,11 @@
     "start:prod": "node dist/main.js",
     "lint": "eslint \"{src,test}/**/*.ts\" --max-warnings=0",
     "typecheck": "tsc --noEmit",
-    "test": "jest",
-    "test:watch": "jest --watch",
-    "test:cov": "jest --coverage",
-    "test:e2e": "jest --config ./test/jest-e2e.json --runInBand",
+    "test": "jest --selectProjects unit",
+    "test:watch": "jest --selectProjects unit --watch",
+    "test:cov": "jest --selectProjects unit --coverage",
+    "test:cov:all": "jest --runInBand --coverage",
+    "test:e2e": "jest --selectProjects e2e --runInBand",
     "typeorm": "node -r ts-node/register ./node_modules/typeorm/cli.js -d src/shared/infra/database/data-source.ts",
     "migration:generate": "npm run typeorm -- migration:generate",
     "migration:run": "npm run typeorm -- migration:run",
@@ -81,23 +82,135 @@
     "typescript": "5.6.3"
   },
   "jest": {
+    "rootDir": ".",
     "moduleFileExtensions": [
       "js",
       "json",
       "ts"
     ],
-    "rootDir": "src",
-    "testRegex": ".*\\.spec\\.ts$",
-    "transform": {
-      "^.+\\.(t|j)s$": "ts-jest"
-    },
-    "collectCoverageFrom": [
-      "**/*.(t|j)s"
+    "coverageDirectory": "<rootDir>/coverage",
+    "coverageReporters": [
+      "text",
+      "text-summary",
+      "lcov",
+      "json-summary"
     ],
-    "coverageDirectory": "../coverage",
-    "testEnvironment": "node",
-    "moduleNameMapper": {
-      "^src/(.*)$": "<rootDir>/$1"
-    }
+    "collectCoverageFrom": [
+      "src/**/*.ts",
+      "!src/**/*.spec.ts",
+      "!src/**/__test-fixtures__/**",
+      "!src/**/*.dto.ts",
+      "!src/**/*.entity.ts",
+      "!src/**/*.module.ts",
+      "!src/**/migrations/**",
+      "!src/modules/skeleton/**",
+      "!src/main.ts",
+      "!src/shared/infra/database/data-source.ts"
+    ],
+    "coverageThreshold": {
+      "global": {
+        "statements": 85,
+        "branches": 80,
+        "functions": 85,
+        "lines": 85
+      },
+      "src/modules/catalog/category/domain/": {
+        "statements": 100,
+        "branches": 100,
+        "functions": 100,
+        "lines": 100
+      },
+      "src/modules/catalog/product/domain/": {
+        "statements": 100,
+        "branches": 100,
+        "functions": 100,
+        "lines": 100
+      },
+      "src/shared/domain/": {
+        "statements": 100,
+        "branches": 100,
+        "functions": 100,
+        "lines": 100
+      },
+      "src/modules/catalog/category/application/": {
+        "statements": 95,
+        "branches": 90,
+        "functions": 95,
+        "lines": 95
+      },
+      "src/modules/catalog/product/application/": {
+        "statements": 95,
+        "branches": 90,
+        "functions": 95,
+        "lines": 95
+      },
+      "src/modules/audit/application/": {
+        "statements": 95,
+        "branches": 90,
+        "functions": 95,
+        "lines": 95
+      },
+      "src/shared/application/": {
+        "statements": 95,
+        "branches": 90,
+        "functions": 95,
+        "lines": 95
+      },
+      "src/modules/catalog/category/presentation/": {
+        "statements": 90,
+        "branches": 85,
+        "functions": 90,
+        "lines": 90
+      },
+      "src/modules/catalog/product/presentation/": {
+        "statements": 90,
+        "branches": 85,
+        "functions": 90,
+        "lines": 90
+      },
+      "src/modules/audit/presentation/": {
+        "statements": 90,
+        "branches": 85,
+        "functions": 90,
+        "lines": 90
+      },
+      "src/shared/infra/": {
+        "statements": 80,
+        "branches": 75,
+        "functions": 80,
+        "lines": 80
+      }
+    },
+    "projects": [
+      {
+        "displayName": "unit",
+        "rootDir": "<rootDir>",
+        "testMatch": [
+          "<rootDir>/src/**/*.spec.ts"
+        ],
+        "transform": {
+          "^.+\\.(t|j)s$": "ts-jest"
+        },
+        "moduleNameMapper": {
+          "^src/(.*)$": "<rootDir>/src/$1"
+        },
+        "testEnvironment": "node"
+      },
+      {
+        "displayName": "e2e",
+        "rootDir": "<rootDir>",
+        "testMatch": [
+          "<rootDir>/test/**/*.e2e-spec.ts"
+        ],
+        "transform": {
+          "^.+\\.(t|j)s$": "ts-jest"
+        },
+        "moduleNameMapper": {
+          "^src/(.*)$": "<rootDir>/src/$1"
+        },
+        "testEnvironment": "node",
+        "testTimeout": 180000
+      }
+    ]
   }
 }
