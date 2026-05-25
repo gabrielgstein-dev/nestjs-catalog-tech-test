@@ -101,4 +101,64 @@ describe('BusinessActionLogger', () => {
       correlationId: 'worker-corr',
     });
   });
+
+  it('info() emits at info level with outcome=success and CorrelationContext correlationId', () => {
+    const { pino, info } = buildPino();
+    const log = new BusinessActionLogger(pino);
+
+    CorrelationContext.run('corr-info', () => {
+      log.info({ action: 'audit.event.received', eventId: 'e-2' });
+    });
+
+    expect(info).toHaveBeenCalledTimes(1);
+    expect(info.mock.calls[0][0]).toEqual({
+      action: 'audit.event.received',
+      eventId: 'e-2',
+      outcome: 'success',
+      correlationId: 'corr-info',
+    });
+  });
+
+  it('ScopedBusinessActionLogger.info() emits with the scoped correlationId', () => {
+    const { pino, info } = buildPino();
+    const scoped = new BusinessActionLogger(pino).forCorrelationId('worker-info');
+    scoped.info({ action: 'audit.event.duplicate_skipped', eventId: 'e-3' });
+
+    expect(info).toHaveBeenCalledTimes(1);
+    expect(info.mock.calls[0][0]).toEqual({
+      action: 'audit.event.duplicate_skipped',
+      eventId: 'e-3',
+      outcome: 'success',
+      correlationId: 'worker-info',
+    });
+  });
+
+  it('ScopedBusinessActionLogger.failure() emits warn with reason', () => {
+    const { pino, warn } = buildPino();
+    const scoped = new BusinessActionLogger(pino).forCorrelationId('worker-fail');
+    scoped.failure({ action: 'audit.event.retry_scheduled', eventId: 'e-4', reason: 'boom' });
+
+    expect(warn.mock.calls[0][0]).toEqual({
+      action: 'audit.event.retry_scheduled',
+      eventId: 'e-4',
+      reason: 'boom',
+      outcome: 'failure',
+      correlationId: 'worker-fail',
+    });
+  });
+
+  it('ScopedBusinessActionLogger.error() emits error with reason + err', () => {
+    const { pino, error } = buildPino();
+    const scoped = new BusinessActionLogger(pino).forCorrelationId('worker-err');
+    const boom = new Error('crash');
+    scoped.error({ action: 'audit.event.dlq', reason: 'max_attempts_reached', err: boom });
+
+    expect(error.mock.calls[0][0]).toMatchObject({
+      action: 'audit.event.dlq',
+      reason: 'max_attempts_reached',
+      outcome: 'failure',
+      correlationId: 'worker-err',
+      err: boom,
+    });
+  });
 });

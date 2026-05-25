@@ -18,6 +18,8 @@ const REDACT_PATHS = [
   '*.refreshToken',
   '*.secret',
   '*.apiKey',
+  '*.api_key',
+  '*.apikey',
 ];
 
 @Global()

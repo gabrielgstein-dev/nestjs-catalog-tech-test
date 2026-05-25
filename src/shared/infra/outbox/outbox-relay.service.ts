@@ -162,7 +162,7 @@ export class OutboxRelay implements OnModuleInit, OnModuleDestroy {
       );
       if (!ok) {
         this.actionLog.forCorrelationId(row.correlation_id).failure({
-          action: 'messaging.outbox.publish',
+          action: 'messaging.outbox.publish_failed',
           aggregateType: row.aggregate_type,
           aggregateId: row.aggregate_id,
           eventId: row.id,
