@@ -185,9 +185,6 @@ npm run typecheck
 npm run build
 ```
 
-CI: GitHub Actions ([.github/workflows/ci.yml](.github/workflows/ci.yml))
-roda `lint → typecheck → test → build` em Node 22 a cada push/PR.
-
 ---
 
 ## Estrutura
