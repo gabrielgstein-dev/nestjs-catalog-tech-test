@@ -8,6 +8,8 @@ import {
   DomainEventPublisher,
 } from '../../../../../shared/application/domain-event-publisher.port';
 import { UNIT_OF_WORK, UnitOfWork } from '../../../../../shared/application/unit-of-work.port';
+import { BusinessActionLogger } from '../../../../../shared/infra/logging/business-action.logger';
+import { runWithActionLog } from '../../../../../shared/infra/logging/run-with-action-log';
 import { ProductNotFoundError } from '../errors/product-not-found.error';
 import { DetachCategoryFromProductCommand } from './detach-category-from-product.command';
 
@@ -19,21 +21,32 @@ export class DetachCategoryFromProductHandler
     @Inject(PRODUCT_REPOSITORY) private readonly products: ProductRepository,
     @Inject(DOMAIN_EVENT_PUBLISHER) private readonly publisher: DomainEventPublisher,
     @Inject(UNIT_OF_WORK) private readonly uow: UnitOfWork,
+    private readonly log: BusinessActionLogger,
   ) {}
 
   async execute(cmd: DetachCategoryFromProductCommand): Promise<void> {
-    await this.uow.run(async () => {
-      const productId = ProductId.of(cmd.productId);
-      const categoryId = CategoryId.of(cmd.categoryId);
+    const productId = ProductId.of(cmd.productId);
+    const categoryId = CategoryId.of(cmd.categoryId);
+    await runWithActionLog(
+      this.log,
+      {
+        action: 'catalog.product.category_detached',
+        aggregateType: 'catalog.product',
+        aggregateId: productId.value,
+        productId: productId.value,
+        categoryId: categoryId.value,
+      },
+      () =>
+        this.uow.run(async () => {
+          const product = await this.products.findById(productId);
+          if (!product) {
+            throw new ProductNotFoundError(productId.value);
+          }
 
-      const product = await this.products.findById(productId);
-      if (!product) {
-        throw new ProductNotFoundError(productId.value);
-      }
-
-      product.detachCategory(categoryId);
-      await this.products.save(product);
-      await this.publisher.publish(product.pullDomainEvents());
-    });
+          product.detachCategory(categoryId);
+          await this.products.save(product);
+          await this.publisher.publish(product.pullDomainEvents());
+        }),
+    );
   }
 }

@@ -7,6 +7,8 @@ import {
   DomainEventPublisher,
 } from '../../../../../shared/application/domain-event-publisher.port';
 import { UNIT_OF_WORK, UnitOfWork } from '../../../../../shared/application/unit-of-work.port';
+import { BusinessActionLogger } from '../../../../../shared/infra/logging/business-action.logger';
+import { runWithActionLog } from '../../../../../shared/infra/logging/run-with-action-log';
 import { CategoryNotFoundError } from '../errors/category-not-found.error';
 import { ParentCategoryNotFoundError } from '../errors/parent-category-not-found.error';
 import { ChangeCategoryParentCommand } from './change-category-parent.command';
@@ -19,28 +21,39 @@ export class ChangeCategoryParentHandler
     @Inject(CATEGORY_REPOSITORY) private readonly repo: CategoryRepository,
     @Inject(DOMAIN_EVENT_PUBLISHER) private readonly publisher: DomainEventPublisher,
     @Inject(UNIT_OF_WORK) private readonly uow: UnitOfWork,
+    private readonly log: BusinessActionLogger,
   ) {}
 
   async execute(cmd: ChangeCategoryParentCommand): Promise<void> {
-    await this.uow.run(async () => {
-      const id = CategoryId.of(cmd.id);
-      const newParentId = cmd.newParentId ? CategoryId.of(cmd.newParentId) : null;
+    const id = CategoryId.of(cmd.id);
+    await runWithActionLog(
+      this.log,
+      {
+        action: 'catalog.category.parent_changed',
+        aggregateType: 'catalog.category',
+        aggregateId: id.value,
+        categoryId: id.value,
+      },
+      () =>
+        this.uow.run(async () => {
+          const newParentId = cmd.newParentId ? CategoryId.of(cmd.newParentId) : null;
 
-      const category = await this.repo.findById(id);
-      if (!category) {
-        throw new CategoryNotFoundError(id.value);
-      }
+          const category = await this.repo.findById(id);
+          if (!category) {
+            throw new CategoryNotFoundError(id.value);
+          }
 
-      if (newParentId) {
-        const parentExists = await this.repo.existsById(newParentId);
-        if (!parentExists) {
-          throw new ParentCategoryNotFoundError(newParentId.value);
-        }
-      }
+          if (newParentId) {
+            const parentExists = await this.repo.existsById(newParentId);
+            if (!parentExists) {
+              throw new ParentCategoryNotFoundError(newParentId.value);
+            }
+          }
 
-      category.changeParent(newParentId);
-      await this.repo.save(category);
-      await this.publisher.publish(category.pullDomainEvents());
-    });
+          category.changeParent(newParentId);
+          await this.repo.save(category);
+          await this.publisher.publish(category.pullDomainEvents());
+        }),
+    );
   }
 }

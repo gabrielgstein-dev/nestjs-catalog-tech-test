@@ -3,6 +3,7 @@ import { AddAttributeCommand } from './add-attribute.command';
 import { InMemoryProductRepository } from '../__test-fixtures__/in-memory-product.repository';
 import { InMemoryDomainEventPublisher } from '../../../../../shared/application/__test-fixtures__/in-memory-domain-event-publisher';
 import { PassThroughUnitOfWork } from '../../../../../shared/application/__test-fixtures__/pass-through-unit-of-work';
+import { silentBusinessActionLogger } from '../../../../../shared/infra/logging/__test-fixtures__/silent-business-action-logger';
 import { buildProduct } from '../__test-fixtures__/build-product';
 import { ProductId } from '../../domain/value-objects/product-id';
 import { AttributeAdded } from '../../domain/events/attribute-added.event';
@@ -15,7 +16,12 @@ const build = () => {
   return {
     repo,
     publisher,
-    handler: new AddAttributeHandler(repo, publisher, new PassThroughUnitOfWork()),
+    handler: new AddAttributeHandler(
+      repo,
+      publisher,
+      new PassThroughUnitOfWork(),
+      silentBusinessActionLogger(),
+    ),
   };
 };
 

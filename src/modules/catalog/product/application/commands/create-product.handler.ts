@@ -10,6 +10,8 @@ import {
   DomainEventPublisher,
 } from '../../../../../shared/application/domain-event-publisher.port';
 import { UNIT_OF_WORK, UnitOfWork } from '../../../../../shared/application/unit-of-work.port';
+import { BusinessActionLogger } from '../../../../../shared/infra/logging/business-action.logger';
+import { runWithActionLog } from '../../../../../shared/infra/logging/run-with-action-log';
 import { CreateProductCommand } from './create-product.command';
 
 export interface CreateProductResult {
@@ -24,19 +26,30 @@ export class CreateProductHandler
     @Inject(PRODUCT_REPOSITORY) private readonly repo: ProductRepository,
     @Inject(DOMAIN_EVENT_PUBLISHER) private readonly publisher: DomainEventPublisher,
     @Inject(UNIT_OF_WORK) private readonly uow: UnitOfWork,
+    private readonly log: BusinessActionLogger,
   ) {}
 
   async execute(cmd: CreateProductCommand): Promise<CreateProductResult> {
-    return this.uow.run(async () => {
-      const id = ProductId.of(cmd.id);
-      const name = ProductName.of(cmd.name);
-      const description = ProductDescription.of(cmd.description);
+    const id = ProductId.of(cmd.id);
+    return runWithActionLog(
+      this.log,
+      {
+        action: 'catalog.product.created',
+        aggregateType: 'catalog.product',
+        aggregateId: id.value,
+        productId: id.value,
+      },
+      () =>
+        this.uow.run(async () => {
+          const name = ProductName.of(cmd.name);
+          const description = ProductDescription.of(cmd.description);
 
-      const product = Product.create({ id, name, description });
-      await this.repo.save(product);
-      await this.publisher.publish(product.pullDomainEvents());
+          const product = Product.create({ id, name, description });
+          await this.repo.save(product);
+          await this.publisher.publish(product.pullDomainEvents());
 
-      return { id: id.value };
-    });
+          return { id: id.value };
+        }),
+    );
   }
 }

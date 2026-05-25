@@ -3,6 +3,7 @@ import { CreateProductCommand } from './create-product.command';
 import { InMemoryProductRepository } from '../__test-fixtures__/in-memory-product.repository';
 import { InMemoryDomainEventPublisher } from '../../../../../shared/application/__test-fixtures__/in-memory-domain-event-publisher';
 import { PassThroughUnitOfWork } from '../../../../../shared/application/__test-fixtures__/pass-through-unit-of-work';
+import { silentBusinessActionLogger } from '../../../../../shared/infra/logging/__test-fixtures__/silent-business-action-logger';
 import { ProductId } from '../../domain/value-objects/product-id';
 import { ProductName } from '../../domain/value-objects/product-name';
 import { ProductStatus } from '../../domain/value-objects/product-status';
@@ -17,7 +18,12 @@ const build = () => {
   return {
     repo,
     publisher,
-    handler: new CreateProductHandler(repo, publisher, new PassThroughUnitOfWork()),
+    handler: new CreateProductHandler(
+      repo,
+      publisher,
+      new PassThroughUnitOfWork(),
+      silentBusinessActionLogger(),
+    ),
   };
 };
 

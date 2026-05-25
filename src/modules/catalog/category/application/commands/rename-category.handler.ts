@@ -8,6 +8,8 @@ import {
   DomainEventPublisher,
 } from '../../../../../shared/application/domain-event-publisher.port';
 import { UNIT_OF_WORK, UnitOfWork } from '../../../../../shared/application/unit-of-work.port';
+import { BusinessActionLogger } from '../../../../../shared/infra/logging/business-action.logger';
+import { runWithActionLog } from '../../../../../shared/infra/logging/run-with-action-log';
 import { CategoryNotFoundError } from '../errors/category-not-found.error';
 import { DuplicateCategoryNameError } from '../errors/duplicate-category-name.error';
 import { RenameCategoryCommand } from './rename-category.command';
@@ -18,30 +20,41 @@ export class RenameCategoryHandler implements ICommandHandler<RenameCategoryComm
     @Inject(CATEGORY_REPOSITORY) private readonly repo: CategoryRepository,
     @Inject(DOMAIN_EVENT_PUBLISHER) private readonly publisher: DomainEventPublisher,
     @Inject(UNIT_OF_WORK) private readonly uow: UnitOfWork,
+    private readonly log: BusinessActionLogger,
   ) {}
 
   async execute(cmd: RenameCategoryCommand): Promise<void> {
-    await this.uow.run(async () => {
-      const id = CategoryId.of(cmd.id);
-      const newName = CategoryName.of(cmd.newName);
+    const id = CategoryId.of(cmd.id);
+    await runWithActionLog(
+      this.log,
+      {
+        action: 'catalog.category.renamed',
+        aggregateType: 'catalog.category',
+        aggregateId: id.value,
+        categoryId: id.value,
+      },
+      () =>
+        this.uow.run(async () => {
+          const newName = CategoryName.of(cmd.newName);
 
-      const category = await this.repo.findById(id);
-      if (!category) {
-        throw new CategoryNotFoundError(id.value);
-      }
+          const category = await this.repo.findById(id);
+          if (!category) {
+            throw new CategoryNotFoundError(id.value);
+          }
 
-      if (category.name.equals(newName)) {
-        return;
-      }
+          if (category.name.equals(newName)) {
+            return;
+          }
 
-      const nameTaken = await this.repo.existsByName(newName, id);
-      if (nameTaken) {
-        throw new DuplicateCategoryNameError(newName.value);
-      }
+          const nameTaken = await this.repo.existsByName(newName, id);
+          if (nameTaken) {
+            throw new DuplicateCategoryNameError(newName.value);
+          }
 
-      category.rename(newName);
-      await this.repo.save(category);
-      await this.publisher.publish(category.pullDomainEvents());
-    });
+          category.rename(newName);
+          await this.repo.save(category);
+          await this.publisher.publish(category.pullDomainEvents());
+        }),
+    );
   }
 }

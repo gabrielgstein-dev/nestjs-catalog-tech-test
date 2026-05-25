@@ -1,47 +1,64 @@
-import { Module } from '@nestjs/common';
+import { Global, Module } from '@nestjs/common';
 import { LoggerModule } from 'nestjs-pino';
 import { randomUUID } from 'node:crypto';
 import { IncomingMessage } from 'node:http';
+import { CorrelationContext } from '../../application/correlation-context';
 import { CORRELATION_ID_HEADER, CORRELATION_ID_KEY } from '../http/correlation-id.constants';
+import { BusinessActionLogger } from './business-action.logger';
 
+const REDACT_PATHS = [
+  'req.headers.authorization',
+  'req.headers.cookie',
+  'req.headers["set-cookie"]',
+  'req.headers["x-api-key"]',
+  '*.password',
+  '*.passwordHash',
+  '*.token',
+  '*.accessToken',
+  '*.refreshToken',
+  '*.secret',
+  '*.apiKey',
+];
+
+@Global()
 @Module({
   imports: [
     LoggerModule.forRootAsync({
       useFactory: () => {
-        const isProd = process.env.NODE_ENV === 'production';
+        const env = process.env.NODE_ENV ?? 'development';
+        const usePretty = env === 'development';
         return {
           pinoHttp: {
             level: process.env.LOG_LEVEL ?? 'info',
-            // Map nestjs-pino's "req.id" to the correlation header.
             genReqId: (req: IncomingMessage) => {
               const headerVal = req.headers[CORRELATION_ID_HEADER];
               const incoming = Array.isArray(headerVal) ? headerVal[0] : headerVal;
               const correlationId = incoming ?? randomUUID();
-              // expose for downstream middlewares / response
               (req as IncomingMessage & { [k: string]: unknown })[CORRELATION_ID_KEY] =
                 correlationId;
               return correlationId;
             },
             customProps: (req) => ({
-              [CORRELATION_ID_KEY]: (req as IncomingMessage & { id?: string }).id,
+              [CORRELATION_ID_KEY]:
+                (req as IncomingMessage & { id?: string }).id ?? CorrelationContext.get() ?? null,
             }),
             customLogLevel: (_req, res, err) => {
               if (err || res.statusCode >= 500) return 'error';
               if (res.statusCode >= 400) return 'warn';
               return 'info';
             },
-            transport: isProd
-              ? undefined
-              : {
+            transport: usePretty
+              ? {
                   target: 'pino-pretty',
                   options: {
                     singleLine: true,
                     translateTime: 'SYS:HH:MM:ss.l',
                     ignore: 'pid,hostname',
                   },
-                },
+                }
+              : undefined,
             redact: {
-              paths: ['req.headers.authorization', 'req.headers.cookie'],
+              paths: REDACT_PATHS,
               remove: true,
             },
             serializers: {
@@ -57,5 +74,7 @@ import { CORRELATION_ID_HEADER, CORRELATION_ID_KEY } from '../http/correlation-i
       },
     }),
   ],
+  providers: [BusinessActionLogger],
+  exports: [BusinessActionLogger],
 })
 export class AppLoggerModule {}

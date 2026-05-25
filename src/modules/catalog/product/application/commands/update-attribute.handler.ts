@@ -8,6 +8,8 @@ import {
   DomainEventPublisher,
 } from '../../../../../shared/application/domain-event-publisher.port';
 import { UNIT_OF_WORK, UnitOfWork } from '../../../../../shared/application/unit-of-work.port';
+import { BusinessActionLogger } from '../../../../../shared/infra/logging/business-action.logger';
+import { runWithActionLog } from '../../../../../shared/infra/logging/run-with-action-log';
 import { ProductNotFoundError } from '../errors/product-not-found.error';
 import { UpdateAttributeCommand } from './update-attribute.command';
 
@@ -17,21 +19,33 @@ export class UpdateAttributeHandler implements ICommandHandler<UpdateAttributeCo
     @Inject(PRODUCT_REPOSITORY) private readonly repo: ProductRepository,
     @Inject(DOMAIN_EVENT_PUBLISHER) private readonly publisher: DomainEventPublisher,
     @Inject(UNIT_OF_WORK) private readonly uow: UnitOfWork,
+    private readonly log: BusinessActionLogger,
   ) {}
 
   async execute(cmd: UpdateAttributeCommand): Promise<void> {
-    await this.uow.run(async () => {
-      const id = ProductId.of(cmd.productId);
-      const attribute = Attribute.of(cmd.key, cmd.value);
+    const id = ProductId.of(cmd.productId);
+    await runWithActionLog(
+      this.log,
+      {
+        action: 'catalog.product.attribute_updated',
+        aggregateType: 'catalog.product',
+        aggregateId: id.value,
+        productId: id.value,
+        attributeKey: cmd.key,
+      },
+      () =>
+        this.uow.run(async () => {
+          const attribute = Attribute.of(cmd.key, cmd.value);
 
-      const product = await this.repo.findById(id);
-      if (!product) {
-        throw new ProductNotFoundError(id.value);
-      }
+          const product = await this.repo.findById(id);
+          if (!product) {
+            throw new ProductNotFoundError(id.value);
+          }
 
-      product.updateAttribute(attribute);
-      await this.repo.save(product);
-      await this.publisher.publish(product.pullDomainEvents());
-    });
+          product.updateAttribute(attribute);
+          await this.repo.save(product);
+          await this.publisher.publish(product.pullDomainEvents());
+        }),
+    );
   }
 }

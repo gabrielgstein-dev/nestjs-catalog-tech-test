@@ -3,6 +3,7 @@ import { ChangeCategoryParentCommand } from './change-category-parent.command';
 import { InMemoryCategoryRepository } from '../__test-fixtures__/in-memory-category.repository';
 import { InMemoryDomainEventPublisher } from '../../../../../shared/application/__test-fixtures__/in-memory-domain-event-publisher';
 import { PassThroughUnitOfWork } from '../../../../../shared/application/__test-fixtures__/pass-through-unit-of-work';
+import { silentBusinessActionLogger } from '../../../../../shared/infra/logging/__test-fixtures__/silent-business-action-logger';
 import { Category } from '../../domain/category';
 import { CategoryId } from '../../domain/value-objects/category-id';
 import { CategoryName } from '../../domain/value-objects/category-name';
@@ -31,7 +32,12 @@ const build = () => {
   return {
     repo,
     publisher,
-    handler: new ChangeCategoryParentHandler(repo, publisher, new PassThroughUnitOfWork()),
+    handler: new ChangeCategoryParentHandler(
+      repo,
+      publisher,
+      new PassThroughUnitOfWork(),
+      silentBusinessActionLogger(),
+    ),
   };
 };
 
