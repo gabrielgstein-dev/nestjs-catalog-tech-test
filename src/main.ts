@@ -2,10 +2,14 @@ import { NestFactory } from '@nestjs/core';
 import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module';
 import { AppConfigService } from './shared/config/app-config.service';
+import { configureHttpApp, mountSwagger } from './shared/infra/http/bootstrap-http';
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
   app.useLogger(app.get(Logger));
+
+  configureHttpApp(app);
+  mountSwagger(app);
 
   const config = app.get(AppConfigService);
   const port = config.port;
