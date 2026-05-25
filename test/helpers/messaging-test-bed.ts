@@ -38,7 +38,7 @@ export const startMessagingTestBed = async (
 
   process.env.NODE_ENV = 'test';
   process.env.PORT = '3010';
-  process.env.LOG_LEVEL = 'warn';
+  process.env.LOG_LEVEL = process.env.LOG_LEVEL ?? 'warn';
   process.env.DB_HOST = postgres.getHost();
   process.env.DB_PORT = String(postgres.getMappedPort(5432));
   process.env.DB_USER = postgres.getUsername();

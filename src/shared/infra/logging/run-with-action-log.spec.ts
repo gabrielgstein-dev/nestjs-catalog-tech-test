@@ -24,11 +24,7 @@ const buildLogger = () => {
 describe('runWithActionLog', () => {
   it('emits success when fn resolves and returns its result', async () => {
     const { log, success } = buildLogger();
-    const out = await runWithActionLog(
-      log,
-      { action: 'a.b', productId: 'pid' },
-      async () => 'ok',
-    );
+    const out = await runWithActionLog(log, { action: 'a.b', productId: 'pid' }, async () => 'ok');
     expect(out).toBe('ok');
     expect(success).toHaveBeenCalledWith({ action: 'a.b', productId: 'pid' });
   });

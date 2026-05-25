@@ -12,6 +12,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { join } from 'node:path';
 import { PostgreSqlContainer, StartedPostgreSqlContainer } from '@testcontainers/postgresql';
+import { LoggerModule } from 'nestjs-pino';
 import { CatalogModule } from '../src/modules/catalog/catalog.module';
 import { CATEGORY_REPOSITORY } from '../src/modules/catalog/category/domain/ports/category.repository';
 import { PRODUCT_REPOSITORY } from '../src/modules/catalog/product/domain/ports/product.repository';
@@ -21,14 +22,17 @@ import { DOMAIN_EVENT_PUBLISHER } from '../src/shared/application/domain-event-p
 import { UNIT_OF_WORK } from '../src/shared/application/unit-of-work.port';
 import { InMemoryDomainEventPublisher } from '../src/shared/application/__test-fixtures__/in-memory-domain-event-publisher';
 import { PassThroughUnitOfWork } from '../src/shared/application/__test-fixtures__/pass-through-unit-of-work';
+import { BusinessActionLogger } from '../src/shared/infra/logging/business-action.logger';
 
 @Global()
 @Module({
+  imports: [LoggerModule.forRoot({ pinoHttp: { level: 'silent' } })],
   providers: [
     { provide: DOMAIN_EVENT_PUBLISHER, useClass: InMemoryDomainEventPublisher },
     { provide: UNIT_OF_WORK, useClass: PassThroughUnitOfWork },
+    BusinessActionLogger,
   ],
-  exports: [DOMAIN_EVENT_PUBLISHER, UNIT_OF_WORK],
+  exports: [DOMAIN_EVENT_PUBLISHER, UNIT_OF_WORK, BusinessActionLogger],
 })
 class CatalogTestStubs {}
 
