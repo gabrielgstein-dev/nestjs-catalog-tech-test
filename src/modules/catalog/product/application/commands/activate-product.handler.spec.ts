@@ -2,6 +2,7 @@ import { ActivateProductHandler } from './activate-product.handler';
 import { ActivateProductCommand } from './activate-product.command';
 import { InMemoryProductRepository } from '../__test-fixtures__/in-memory-product.repository';
 import { InMemoryDomainEventPublisher } from '../../../../../shared/application/__test-fixtures__/in-memory-domain-event-publisher';
+import { PassThroughUnitOfWork } from '../../../../../shared/application/__test-fixtures__/pass-through-unit-of-work';
 import { buildProduct } from '../__test-fixtures__/build-product';
 import { ProductId } from '../../domain/value-objects/product-id';
 import { ProductStatus } from '../../domain/value-objects/product-status';
@@ -12,7 +13,11 @@ import { ProductCannotBeActivatedError } from '../../domain/errors/product-canno
 const build = () => {
   const repo = new InMemoryProductRepository();
   const publisher = new InMemoryDomainEventPublisher();
-  return { repo, publisher, handler: new ActivateProductHandler(repo, publisher) };
+  return {
+    repo,
+    publisher,
+    handler: new ActivateProductHandler(repo, publisher, new PassThroughUnitOfWork()),
+  };
 };
 
 const buildReady = (id: string, name = 'Cadeira') =>

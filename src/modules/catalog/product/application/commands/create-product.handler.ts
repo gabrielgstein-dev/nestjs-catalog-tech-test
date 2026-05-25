@@ -9,6 +9,7 @@ import {
   DOMAIN_EVENT_PUBLISHER,
   DomainEventPublisher,
 } from '../../../../../shared/application/domain-event-publisher.port';
+import { UNIT_OF_WORK, UnitOfWork } from '../../../../../shared/application/unit-of-work.port';
 import { CreateProductCommand } from './create-product.command';
 
 export interface CreateProductResult {
@@ -22,17 +23,20 @@ export class CreateProductHandler
   constructor(
     @Inject(PRODUCT_REPOSITORY) private readonly repo: ProductRepository,
     @Inject(DOMAIN_EVENT_PUBLISHER) private readonly publisher: DomainEventPublisher,
+    @Inject(UNIT_OF_WORK) private readonly uow: UnitOfWork,
   ) {}
 
   async execute(cmd: CreateProductCommand): Promise<CreateProductResult> {
-    const id = ProductId.of(cmd.id);
-    const name = ProductName.of(cmd.name);
-    const description = ProductDescription.of(cmd.description);
+    return this.uow.run(async () => {
+      const id = ProductId.of(cmd.id);
+      const name = ProductName.of(cmd.name);
+      const description = ProductDescription.of(cmd.description);
 
-    const product = Product.create({ id, name, description });
-    await this.repo.save(product);
-    await this.publisher.publish(product.pullDomainEvents());
+      const product = Product.create({ id, name, description });
+      await this.repo.save(product);
+      await this.publisher.publish(product.pullDomainEvents());
 
-    return { id: id.value };
+      return { id: id.value };
+    });
   }
 }

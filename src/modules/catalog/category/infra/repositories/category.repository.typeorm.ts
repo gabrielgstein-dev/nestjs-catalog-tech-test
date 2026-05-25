@@ -6,6 +6,7 @@ import { CategoryId } from '../../domain/value-objects/category-id';
 import { CategoryName } from '../../domain/value-objects/category-name';
 import { CategoryEntity } from '../entities/category.entity';
 import { CategoryMapper } from '../mappers/category.mapper';
+import { getAmbientManager } from '../../../../../shared/infra/database/get-manager';
 
 @Injectable()
 export class CategoryRepositoryTypeOrm implements CategoryRepository {
@@ -13,7 +14,8 @@ export class CategoryRepositoryTypeOrm implements CategoryRepository {
 
   async save(category: Category): Promise<void> {
     const row = CategoryMapper.toPersistence(category);
-    await this.dataSource.query(
+    const manager = getAmbientManager(this.dataSource);
+    await manager.query(
       `INSERT INTO category (id, name, parent_id)
          VALUES ($1, $2, $3)
        ON CONFLICT (id) DO UPDATE
@@ -25,18 +27,18 @@ export class CategoryRepositoryTypeOrm implements CategoryRepository {
   }
 
   async findById(id: CategoryId): Promise<Category | null> {
-    const repo = this.dataSource.getRepository(CategoryEntity);
+    const repo = getAmbientManager(this.dataSource).getRepository(CategoryEntity);
     const entity = await repo.findOne({ where: { id: id.value } });
     return entity ? CategoryMapper.toDomain(entity) : null;
   }
 
   async existsById(id: CategoryId): Promise<boolean> {
-    const repo = this.dataSource.getRepository(CategoryEntity);
+    const repo = getAmbientManager(this.dataSource).getRepository(CategoryEntity);
     return repo.exists({ where: { id: id.value } });
   }
 
   async existsByName(name: CategoryName, exceptId?: CategoryId): Promise<boolean> {
-    const repo = this.dataSource.getRepository(CategoryEntity);
+    const repo = getAmbientManager(this.dataSource).getRepository(CategoryEntity);
     const qb = repo.createQueryBuilder('c').where('c.name = :name', { name: name.value });
     if (exceptId) {
       qb.andWhere('c.id <> :id', { id: exceptId.value });

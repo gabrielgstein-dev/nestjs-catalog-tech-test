@@ -2,6 +2,7 @@ import { CreateCategoryHandler } from './create-category.handler';
 import { CreateCategoryCommand } from './create-category.command';
 import { InMemoryCategoryRepository } from '../__test-fixtures__/in-memory-category.repository';
 import { InMemoryDomainEventPublisher } from '../../../../../shared/application/__test-fixtures__/in-memory-domain-event-publisher';
+import { PassThroughUnitOfWork } from '../../../../../shared/application/__test-fixtures__/pass-through-unit-of-work';
 import { Category } from '../../domain/category';
 import { CategoryId } from '../../domain/value-objects/category-id';
 import { CategoryName } from '../../domain/value-objects/category-name';
@@ -12,7 +13,11 @@ import { ParentCategoryNotFoundError } from '../errors/parent-category-not-found
 const build = () => {
   const repo = new InMemoryCategoryRepository();
   const publisher = new InMemoryDomainEventPublisher();
-  return { repo, publisher, handler: new CreateCategoryHandler(repo, publisher) };
+  return {
+    repo,
+    publisher,
+    handler: new CreateCategoryHandler(repo, publisher, new PassThroughUnitOfWork()),
+  };
 };
 
 describe('CreateCategoryHandler', () => {

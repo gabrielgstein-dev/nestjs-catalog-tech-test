@@ -6,6 +6,7 @@ import {
   DOMAIN_EVENT_PUBLISHER,
   DomainEventPublisher,
 } from '../../../../../shared/application/domain-event-publisher.port';
+import { UNIT_OF_WORK, UnitOfWork } from '../../../../../shared/application/unit-of-work.port';
 import { ProductNotFoundError } from '../errors/product-not-found.error';
 import { ProductCannotBeActivatedError } from '../../domain/errors/product-cannot-be-activated.error';
 import { ActivateProductCommand } from './activate-product.command';
@@ -15,23 +16,26 @@ export class ActivateProductHandler implements ICommandHandler<ActivateProductCo
   constructor(
     @Inject(PRODUCT_REPOSITORY) private readonly repo: ProductRepository,
     @Inject(DOMAIN_EVENT_PUBLISHER) private readonly publisher: DomainEventPublisher,
+    @Inject(UNIT_OF_WORK) private readonly uow: UnitOfWork,
   ) {}
 
   async execute(cmd: ActivateProductCommand): Promise<void> {
-    const id = ProductId.of(cmd.id);
+    await this.uow.run(async () => {
+      const id = ProductId.of(cmd.id);
 
-    const product = await this.repo.findById(id);
-    if (!product) {
-      throw new ProductNotFoundError(id.value);
-    }
+      const product = await this.repo.findById(id);
+      if (!product) {
+        throw new ProductNotFoundError(id.value);
+      }
 
-    const nameTaken = await this.repo.existsOtherWithSameNameExcludingArchived(product.name, id);
-    if (nameTaken) {
-      throw new ProductCannotBeActivatedError('name_taken');
-    }
+      const nameTaken = await this.repo.existsOtherWithSameNameExcludingArchived(product.name, id);
+      if (nameTaken) {
+        throw new ProductCannotBeActivatedError('name_taken');
+      }
 
-    product.activate();
-    await this.repo.save(product);
-    await this.publisher.publish(product.pullDomainEvents());
+      product.activate();
+      await this.repo.save(product);
+      await this.publisher.publish(product.pullDomainEvents());
+    });
   }
 }

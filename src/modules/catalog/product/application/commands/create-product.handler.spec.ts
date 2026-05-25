@@ -2,6 +2,7 @@ import { CreateProductHandler } from './create-product.handler';
 import { CreateProductCommand } from './create-product.command';
 import { InMemoryProductRepository } from '../__test-fixtures__/in-memory-product.repository';
 import { InMemoryDomainEventPublisher } from '../../../../../shared/application/__test-fixtures__/in-memory-domain-event-publisher';
+import { PassThroughUnitOfWork } from '../../../../../shared/application/__test-fixtures__/pass-through-unit-of-work';
 import { ProductId } from '../../domain/value-objects/product-id';
 import { ProductName } from '../../domain/value-objects/product-name';
 import { ProductStatus } from '../../domain/value-objects/product-status';
@@ -13,7 +14,11 @@ import { ProductCreated } from '../../domain/events/product-created.event';
 const build = () => {
   const repo = new InMemoryProductRepository();
   const publisher = new InMemoryDomainEventPublisher();
-  return { repo, publisher, handler: new CreateProductHandler(repo, publisher) };
+  return {
+    repo,
+    publisher,
+    handler: new CreateProductHandler(repo, publisher, new PassThroughUnitOfWork()),
+  };
 };
 
 describe('CreateProductHandler', () => {

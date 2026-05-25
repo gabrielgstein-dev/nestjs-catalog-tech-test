@@ -2,6 +2,7 @@ import { RenameProductHandler } from './rename-product.handler';
 import { RenameProductCommand } from './rename-product.command';
 import { InMemoryProductRepository } from '../__test-fixtures__/in-memory-product.repository';
 import { InMemoryDomainEventPublisher } from '../../../../../shared/application/__test-fixtures__/in-memory-domain-event-publisher';
+import { PassThroughUnitOfWork } from '../../../../../shared/application/__test-fixtures__/pass-through-unit-of-work';
 import { buildProduct } from '../__test-fixtures__/build-product';
 import { ProductId } from '../../domain/value-objects/product-id';
 import { ProductStatus } from '../../domain/value-objects/product-status';
@@ -12,7 +13,11 @@ import { ArchivedProductIsImmutableError } from '../../domain/errors/archived-pr
 const build = () => {
   const repo = new InMemoryProductRepository();
   const publisher = new InMemoryDomainEventPublisher();
-  return { repo, publisher, handler: new RenameProductHandler(repo, publisher) };
+  return {
+    repo,
+    publisher,
+    handler: new RenameProductHandler(repo, publisher, new PassThroughUnitOfWork()),
+  };
 };
 
 describe('RenameProductHandler', () => {

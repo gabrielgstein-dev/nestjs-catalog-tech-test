@@ -7,6 +7,7 @@ import {
   DOMAIN_EVENT_PUBLISHER,
   DomainEventPublisher,
 } from '../../../../../shared/application/domain-event-publisher.port';
+import { UNIT_OF_WORK, UnitOfWork } from '../../../../../shared/application/unit-of-work.port';
 import { ProductNotFoundError } from '../errors/product-not-found.error';
 import { DetachCategoryFromProductCommand } from './detach-category-from-product.command';
 
@@ -17,19 +18,22 @@ export class DetachCategoryFromProductHandler
   constructor(
     @Inject(PRODUCT_REPOSITORY) private readonly products: ProductRepository,
     @Inject(DOMAIN_EVENT_PUBLISHER) private readonly publisher: DomainEventPublisher,
+    @Inject(UNIT_OF_WORK) private readonly uow: UnitOfWork,
   ) {}
 
   async execute(cmd: DetachCategoryFromProductCommand): Promise<void> {
-    const productId = ProductId.of(cmd.productId);
-    const categoryId = CategoryId.of(cmd.categoryId);
+    await this.uow.run(async () => {
+      const productId = ProductId.of(cmd.productId);
+      const categoryId = CategoryId.of(cmd.categoryId);
 
-    const product = await this.products.findById(productId);
-    if (!product) {
-      throw new ProductNotFoundError(productId.value);
-    }
+      const product = await this.products.findById(productId);
+      if (!product) {
+        throw new ProductNotFoundError(productId.value);
+      }
 
-    product.detachCategory(categoryId);
-    await this.products.save(product);
-    await this.publisher.publish(product.pullDomainEvents());
+      product.detachCategory(categoryId);
+      await this.products.save(product);
+      await this.publisher.publish(product.pullDomainEvents());
+    });
   }
 }

@@ -2,6 +2,7 @@ import { UpdateAttributeHandler } from './update-attribute.handler';
 import { UpdateAttributeCommand } from './update-attribute.command';
 import { InMemoryProductRepository } from '../__test-fixtures__/in-memory-product.repository';
 import { InMemoryDomainEventPublisher } from '../../../../../shared/application/__test-fixtures__/in-memory-domain-event-publisher';
+import { PassThroughUnitOfWork } from '../../../../../shared/application/__test-fixtures__/pass-through-unit-of-work';
 import { buildProduct } from '../__test-fixtures__/build-product';
 import { ProductId } from '../../domain/value-objects/product-id';
 import { AttributeUpdated } from '../../domain/events/attribute-updated.event';
@@ -11,7 +12,11 @@ import { AttributeKeyNotFoundError } from '../../domain/errors/attribute-key-not
 const build = () => {
   const repo = new InMemoryProductRepository();
   const publisher = new InMemoryDomainEventPublisher();
-  return { repo, publisher, handler: new UpdateAttributeHandler(repo, publisher) };
+  return {
+    repo,
+    publisher,
+    handler: new UpdateAttributeHandler(repo, publisher, new PassThroughUnitOfWork()),
+  };
 };
 
 describe('UpdateAttributeHandler', () => {

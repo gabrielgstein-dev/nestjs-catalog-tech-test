@@ -2,6 +2,7 @@ import { RenameCategoryHandler } from './rename-category.handler';
 import { RenameCategoryCommand } from './rename-category.command';
 import { InMemoryCategoryRepository } from '../__test-fixtures__/in-memory-category.repository';
 import { InMemoryDomainEventPublisher } from '../../../../../shared/application/__test-fixtures__/in-memory-domain-event-publisher';
+import { PassThroughUnitOfWork } from '../../../../../shared/application/__test-fixtures__/pass-through-unit-of-work';
 import { Category } from '../../domain/category';
 import { CategoryId } from '../../domain/value-objects/category-id';
 import { CategoryName } from '../../domain/value-objects/category-name';
@@ -22,7 +23,11 @@ const seedCategory = (repo: InMemoryCategoryRepository, id: string, name: string
 const build = () => {
   const repo = new InMemoryCategoryRepository();
   const publisher = new InMemoryDomainEventPublisher();
-  return { repo, publisher, handler: new RenameCategoryHandler(repo, publisher) };
+  return {
+    repo,
+    publisher,
+    handler: new RenameCategoryHandler(repo, publisher, new PassThroughUnitOfWork()),
+  };
 };
 
 describe('RenameCategoryHandler', () => {

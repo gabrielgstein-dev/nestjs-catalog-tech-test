@@ -11,6 +11,7 @@ import {
   DOMAIN_EVENT_PUBLISHER,
   DomainEventPublisher,
 } from '../../../../../shared/application/domain-event-publisher.port';
+import { UNIT_OF_WORK, UnitOfWork } from '../../../../../shared/application/unit-of-work.port';
 import { ProductNotFoundError } from '../errors/product-not-found.error';
 import { CategoryNotFoundError } from '../../../category/application/errors/category-not-found.error';
 import { AttachCategoryToProductCommand } from './attach-category-to-product.command';
@@ -23,24 +24,27 @@ export class AttachCategoryToProductHandler
     @Inject(PRODUCT_REPOSITORY) private readonly products: ProductRepository,
     @Inject(CATEGORY_REPOSITORY) private readonly categories: CategoryRepository,
     @Inject(DOMAIN_EVENT_PUBLISHER) private readonly publisher: DomainEventPublisher,
+    @Inject(UNIT_OF_WORK) private readonly uow: UnitOfWork,
   ) {}
 
   async execute(cmd: AttachCategoryToProductCommand): Promise<void> {
-    const productId = ProductId.of(cmd.productId);
-    const categoryId = CategoryId.of(cmd.categoryId);
+    await this.uow.run(async () => {
+      const productId = ProductId.of(cmd.productId);
+      const categoryId = CategoryId.of(cmd.categoryId);
 
-    const product = await this.products.findById(productId);
-    if (!product) {
-      throw new ProductNotFoundError(productId.value);
-    }
+      const product = await this.products.findById(productId);
+      if (!product) {
+        throw new ProductNotFoundError(productId.value);
+      }
 
-    const categoryExists = await this.categories.existsById(categoryId);
-    if (!categoryExists) {
-      throw new CategoryNotFoundError(categoryId.value);
-    }
+      const categoryExists = await this.categories.existsById(categoryId);
+      if (!categoryExists) {
+        throw new CategoryNotFoundError(categoryId.value);
+      }
 
-    product.attachCategory(categoryId);
-    await this.products.save(product);
-    await this.publisher.publish(product.pullDomainEvents());
+      product.attachCategory(categoryId);
+      await this.products.save(product);
+      await this.publisher.publish(product.pullDomainEvents());
+    });
   }
 }

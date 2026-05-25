@@ -8,6 +8,7 @@ import {
   DOMAIN_EVENT_PUBLISHER,
   DomainEventPublisher,
 } from '../../../../../shared/application/domain-event-publisher.port';
+import { UNIT_OF_WORK, UnitOfWork } from '../../../../../shared/application/unit-of-work.port';
 import { DuplicateCategoryNameError } from '../errors/duplicate-category-name.error';
 import { ParentCategoryNotFoundError } from '../errors/parent-category-not-found.error';
 import { CreateCategoryCommand } from './create-category.command';
@@ -23,29 +24,32 @@ export class CreateCategoryHandler
   constructor(
     @Inject(CATEGORY_REPOSITORY) private readonly repo: CategoryRepository,
     @Inject(DOMAIN_EVENT_PUBLISHER) private readonly publisher: DomainEventPublisher,
+    @Inject(UNIT_OF_WORK) private readonly uow: UnitOfWork,
   ) {}
 
   async execute(cmd: CreateCategoryCommand): Promise<CreateCategoryResult> {
-    const id = CategoryId.of(cmd.id);
-    const name = CategoryName.of(cmd.name);
-    const parentId = cmd.parentId ? CategoryId.of(cmd.parentId) : null;
+    return this.uow.run(async () => {
+      const id = CategoryId.of(cmd.id);
+      const name = CategoryName.of(cmd.name);
+      const parentId = cmd.parentId ? CategoryId.of(cmd.parentId) : null;
 
-    if (parentId) {
-      const parentExists = await this.repo.existsById(parentId);
-      if (!parentExists) {
-        throw new ParentCategoryNotFoundError(parentId.value);
+      if (parentId) {
+        const parentExists = await this.repo.existsById(parentId);
+        if (!parentExists) {
+          throw new ParentCategoryNotFoundError(parentId.value);
+        }
       }
-    }
 
-    const nameTaken = await this.repo.existsByName(name);
-    if (nameTaken) {
-      throw new DuplicateCategoryNameError(name.value);
-    }
+      const nameTaken = await this.repo.existsByName(name);
+      if (nameTaken) {
+        throw new DuplicateCategoryNameError(name.value);
+      }
 
-    const category = Category.create({ id, name, parentId });
-    await this.repo.save(category);
-    await this.publisher.publish(category.pullDomainEvents());
+      const category = Category.create({ id, name, parentId });
+      await this.repo.save(category);
+      await this.publisher.publish(category.pullDomainEvents());
 
-    return { id: id.value };
+      return { id: id.value };
+    });
   }
 }

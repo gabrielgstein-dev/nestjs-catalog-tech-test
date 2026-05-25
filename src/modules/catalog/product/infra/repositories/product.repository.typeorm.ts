@@ -8,7 +8,9 @@ import { ProductStatus } from '../../domain/value-objects/product-status';
 import { ProductEntity } from '../entities/product.entity';
 import { ProductAttributeEntity } from '../entities/product-attribute.entity';
 import { ProductCategoryEntity } from '../entities/product-category.entity';
-import { ProductMapper } from '../mappers/product.mapper';
+import { ProductMapper, ProductPersistenceRow } from '../mappers/product.mapper';
+import { TransactionContext } from '../../../../../shared/application/transaction-context';
+import { getAmbientManager } from '../../../../../shared/infra/database/get-manager';
 
 @Injectable()
 export class ProductRepositoryTypeOrm implements ProductRepository {
@@ -16,60 +18,64 @@ export class ProductRepositoryTypeOrm implements ProductRepository {
 
   async save(product: Product): Promise<void> {
     const row = ProductMapper.toPersistence(product);
+    const ambient = TransactionContext.get();
+    if (ambient) {
+      await this.saveWith(ambient, row);
+      return;
+    }
+    // No outer UoW: still need a transaction to keep delete-then-insert atomic.
+    await this.dataSource.transaction((m) => this.saveWith(m, row));
+  }
 
-    await this.dataSource.transaction(async (manager: EntityManager) => {
-      await manager.query(
-        `INSERT INTO product (id, name, description, status)
-           VALUES ($1, $2, $3, $4)
-         ON CONFLICT (id) DO UPDATE
-           SET name = EXCLUDED.name,
-               description = EXCLUDED.description,
-               status = EXCLUDED.status,
-               updated_at = now()`,
-        [row.product.id, row.product.name, row.product.description, row.product.status],
-      );
+  private async saveWith(manager: EntityManager, row: ProductPersistenceRow): Promise<void> {
+    await manager.query(
+      `INSERT INTO product (id, name, description, status)
+         VALUES ($1, $2, $3, $4)
+       ON CONFLICT (id) DO UPDATE
+         SET name = EXCLUDED.name,
+             description = EXCLUDED.description,
+             status = EXCLUDED.status,
+             updated_at = now()`,
+      [row.product.id, row.product.name, row.product.description, row.product.status],
+    );
 
-      // Replace-all strategy for child collections: small aggregate, simple invariants.
-      await manager.delete(ProductAttributeEntity, { productId: row.product.id });
-      if (row.attributes.length > 0) {
-        await manager
-          .createQueryBuilder()
-          .insert()
-          .into(ProductAttributeEntity)
-          .values(row.attributes)
-          .execute();
-      }
+    // Replace-all strategy for child collections: small aggregate, simple invariants.
+    await manager.delete(ProductAttributeEntity, { productId: row.product.id });
+    if (row.attributes.length > 0) {
+      await manager
+        .createQueryBuilder()
+        .insert()
+        .into(ProductAttributeEntity)
+        .values(row.attributes)
+        .execute();
+    }
 
-      await manager.delete(ProductCategoryEntity, { productId: row.product.id });
-      if (row.categoryIds.length > 0) {
-        await manager
-          .createQueryBuilder()
-          .insert()
-          .into(ProductCategoryEntity)
-          .values(
-            row.categoryIds.map((categoryId) => ({
-              productId: row.product.id,
-              categoryId,
-            })),
-          )
-          .execute();
-      }
-    });
+    await manager.delete(ProductCategoryEntity, { productId: row.product.id });
+    if (row.categoryIds.length > 0) {
+      await manager
+        .createQueryBuilder()
+        .insert()
+        .into(ProductCategoryEntity)
+        .values(
+          row.categoryIds.map((categoryId) => ({
+            productId: row.product.id,
+            categoryId,
+          })),
+        )
+        .execute();
+    }
   }
 
   async findById(id: ProductId): Promise<Product | null> {
-    const product = await this.dataSource
-      .getRepository(ProductEntity)
-      .findOne({ where: { id: id.value } });
+    const manager = getAmbientManager(this.dataSource);
+    const product = await manager.getRepository(ProductEntity).findOne({ where: { id: id.value } });
     if (!product) {
       return null;
     }
 
     const [attributes, categories] = await Promise.all([
-      this.dataSource
-        .getRepository(ProductAttributeEntity)
-        .find({ where: { productId: id.value } }),
-      this.dataSource.getRepository(ProductCategoryEntity).find({ where: { productId: id.value } }),
+      manager.getRepository(ProductAttributeEntity).find({ where: { productId: id.value } }),
+      manager.getRepository(ProductCategoryEntity).find({ where: { productId: id.value } }),
     ]);
 
     return ProductMapper.toDomain({ product, attributes, categories });
@@ -79,7 +85,7 @@ export class ProductRepositoryTypeOrm implements ProductRepository {
     name: ProductName,
     exceptId: ProductId,
   ): Promise<boolean> {
-    const count = await this.dataSource
+    const count = await getAmbientManager(this.dataSource)
       .getRepository(ProductEntity)
       .createQueryBuilder('p')
       .where('p.name = :name', { name: name.value })

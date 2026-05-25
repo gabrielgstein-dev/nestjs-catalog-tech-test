@@ -3,6 +3,7 @@ import { AttachCategoryToProductCommand } from './attach-category-to-product.com
 import { InMemoryProductRepository } from '../__test-fixtures__/in-memory-product.repository';
 import { InMemoryCategoryRepository } from '../../../category/application/__test-fixtures__/in-memory-category.repository';
 import { InMemoryDomainEventPublisher } from '../../../../../shared/application/__test-fixtures__/in-memory-domain-event-publisher';
+import { PassThroughUnitOfWork } from '../../../../../shared/application/__test-fixtures__/pass-through-unit-of-work';
 import { buildProduct } from '../__test-fixtures__/build-product';
 import { Category } from '../../../category/domain/category';
 import { CategoryId } from '../../../category/domain/value-objects/category-id';
@@ -32,7 +33,12 @@ const build = () => {
     products,
     categories,
     publisher,
-    handler: new AttachCategoryToProductHandler(products, categories, publisher),
+    handler: new AttachCategoryToProductHandler(
+      products,
+      categories,
+      publisher,
+      new PassThroughUnitOfWork(),
+    ),
   };
 };
 
