@@ -22,6 +22,10 @@ import { dataSourceOptions } from './data-source';
         autoLoadEntities: true,
         migrations: dataSourceOptions.migrations,
         logging: ['error', 'warn', 'migration'],
+        // Be lenient on initial connection — Testcontainers + cold-start in CI can
+        // make Postgres reject the first connections after the migration DS closes.
+        retryAttempts: 20,
+        retryDelay: 1500,
       }),
     }),
   ],
