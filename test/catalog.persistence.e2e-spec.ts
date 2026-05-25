@@ -228,6 +228,57 @@ describe('Catalog persistence (integration)', () => {
       expect(await productRepo.findById(ProductId.of(randomUUID()))).toBeNull();
     });
 
+    // CRÍTICO 1 — atomicidade: FK violation em product_category deve rolar back o INSERT do product
+    it('rolls back the whole transaction when a category_id FK is violated', async () => {
+      const nonExistentCategoryId = CategoryId.of(randomUUID());
+      const product = buildProduct({
+        name: 'WillRollback',
+        categoryIds: [nonExistentCategoryId],
+        attributes: [Attribute.of('k', 'v')],
+      });
+
+      await expect(productRepo.save(product)).rejects.toThrow(/foreign key|violates.*constraint/i);
+
+      // The product row must NOT exist — the INSERT was rolled back.
+      const rows: Array<{ count: string }> = await bed.dataSource.query(
+        `SELECT count(*)::text AS count FROM product WHERE id = $1`,
+        [product.id.value],
+      );
+      expect(rows[0].count).toBe('0');
+    });
+
+    // MENOR 6 — replace-all com coleção vazia não deixa órfãos
+    it('clears all attributes and categories when saved with empty collections', async () => {
+      const catA = await seedCategory(bed.dataSource, 'ToRemove');
+      const product = buildProduct({
+        name: 'Stripped',
+        categoryIds: [catA],
+        attributes: [Attribute.of('color', 'red')],
+      });
+      await productRepo.save(product);
+
+      const stripped = buildProduct({
+        id: product.id,
+        name: 'Stripped',
+        categoryIds: [],
+        attributes: [],
+        status: product.status,
+      });
+      await productRepo.save(stripped);
+
+      const attrCount: Array<{ count: string }> = await bed.dataSource.query(
+        `SELECT count(*)::text AS count FROM product_attribute WHERE product_id = $1`,
+        [product.id.value],
+      );
+      expect(attrCount[0].count).toBe('0');
+
+      const pcCount: Array<{ count: string }> = await bed.dataSource.query(
+        `SELECT count(*)::text AS count FROM product_category WHERE product_id = $1`,
+        [product.id.value],
+      );
+      expect(pcCount[0].count).toBe('0');
+    });
+
     it('blocks promoting two products to ACTIVE with the same name (DB partial unique index)', async () => {
       const catA = await seedCategory(bed.dataSource, 'A');
       const catB = await seedCategory(bed.dataSource, 'B');
