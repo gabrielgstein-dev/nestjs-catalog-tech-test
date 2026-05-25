@@ -9,8 +9,11 @@ import {
   Patch,
   Post,
   Query,
+  Req,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { CommandBus, QueryBus } from '@nestjs/cqrs';
+import { wasFieldSent } from '../../../../../shared/infra/http/raw-body';
 import {
   ApiBadRequestResponse,
   ApiConflictResponse,
@@ -80,11 +83,14 @@ export class ProductController {
   async update(
     @Param('id', new ParseUUIDPipe()) id: string,
     @Body() dto: UpdateProductDto,
+    @Req() req: Request,
   ): Promise<ProductResponseDto> {
-    if (dto.name !== undefined) {
-      await this.commandBus.execute(new RenameProductCommand(id, dto.name));
+    // Drive partial-PATCH semantics from the raw body, not from the transformed
+    // DTO instance — see src/shared/infra/http/raw-body.ts for the why.
+    if (wasFieldSent(req.body, 'name')) {
+      await this.commandBus.execute(new RenameProductCommand(id, dto.name as string));
     }
-    if (Object.prototype.hasOwnProperty.call(dto, 'description')) {
+    if (wasFieldSent(req.body, 'description')) {
       await this.commandBus.execute(
         new ChangeProductDescriptionCommand(id, dto.description ?? null),
       );

@@ -8,8 +8,11 @@ import {
   Patch,
   Post,
   Query,
+  Req,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { CommandBus, QueryBus } from '@nestjs/cqrs';
+import { wasFieldSent } from '../../../../../shared/infra/http/raw-body';
 import {
   ApiBadRequestResponse,
   ApiConflictResponse,
@@ -65,11 +68,14 @@ export class CategoryController {
   async update(
     @Param('id', new ParseUUIDPipe()) id: string,
     @Body() dto: UpdateCategoryDto,
+    @Req() req: Request,
   ): Promise<CategoryResponseDto> {
-    if (dto.name !== undefined) {
-      await this.commandBus.execute(new RenameCategoryCommand(id, dto.name));
+    // Drive partial-PATCH semantics from the raw body, not from the transformed
+    // DTO instance — see src/shared/infra/http/raw-body.ts for the why.
+    if (wasFieldSent(req.body, 'name')) {
+      await this.commandBus.execute(new RenameCategoryCommand(id, dto.name as string));
     }
-    if (Object.prototype.hasOwnProperty.call(dto, 'parentId')) {
+    if (wasFieldSent(req.body, 'parentId')) {
       await this.commandBus.execute(new ChangeCategoryParentCommand(id, dto.parentId ?? null));
     }
     return this.getOne(id);
