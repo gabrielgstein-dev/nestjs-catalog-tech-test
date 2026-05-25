@@ -10,6 +10,7 @@ import { DataSource } from 'typeorm';
 export interface CatalogHttpTestBed {
   app: INestApplication;
   server: ReturnType<INestApplication['getHttpServer']>;
+  dataSource: DataSource;
   truncate(): Promise<void>;
   close(): Promise<void>;
 }
@@ -92,6 +93,7 @@ export async function startCatalogHttpTestBed(): Promise<CatalogHttpTestBed> {
   return {
     app,
     server: app.getHttpServer(),
+    dataSource,
     truncate,
     async close() {
       await app.close();

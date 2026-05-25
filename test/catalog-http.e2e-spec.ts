@@ -1,5 +1,6 @@
 import request from 'supertest';
 import { CatalogHttpTestBed, startCatalogHttpTestBed } from './helpers/catalog-http-test-bed';
+import { waitFor } from './helpers/messaging-test-bed';
 
 jest.setTimeout(240_000);
 
@@ -83,6 +84,101 @@ describe('Catalog HTTP API (e2e)', () => {
       await request(server).delete(`/products/${pid}/attributes/pages`).expect(204);
       const after = await request(server).get(`/products/${pid}`).expect(200);
       expect(after.body.attributes.map((a: { key: string }) => a.key)).toEqual(['isbn']);
+    });
+  });
+
+  describe('full lifecycle via HTTP -> audit_log persisted with correlationId for every hop', () => {
+    it('walks create -> categorize -> attribute -> activate -> archive and persists ONE audit_log row per domain event sharing the same correlationId', async () => {
+      const corr = 'lifecycle-audit-1';
+
+      const cat = await request(server)
+        .post('/categories')
+        .set('x-correlation-id', corr)
+        .send({ name: 'AuditedCategory' })
+        .expect(201);
+      const categoryId: string = cat.body.id;
+
+      const prod = await request(server)
+        .post('/products')
+        .set('x-correlation-id', corr)
+        .send({ name: 'AuditedProduct', description: 'tracked end to end' })
+        .expect(201);
+      const productId: string = prod.body.id;
+
+      await request(server)
+        .post(`/products/${productId}/categories`)
+        .set('x-correlation-id', corr)
+        .send({ categoryId })
+        .expect(204);
+
+      await request(server)
+        .post(`/products/${productId}/attributes`)
+        .set('x-correlation-id', corr)
+        .send({ key: 'color', value: 'silver' })
+        .expect(201);
+
+      await request(server)
+        .post(`/products/${productId}/activate`)
+        .set('x-correlation-id', corr)
+        .expect(204);
+
+      await request(server)
+        .post(`/products/${productId}/archive`)
+        .set('x-correlation-id', corr)
+        .expect(204);
+
+      const final = await request(server).get(`/products/${productId}`).expect(200);
+      expect(final.body.status).toBe('ARCHIVED');
+      expect(final.body.categoryIds).toEqual([categoryId]);
+      expect(final.body.attributes).toEqual([{ key: 'color', value: 'silver' }]);
+
+      // Audit asynchronously drains 6 events (1 on the category + 5 on the product).
+      const auditRows = await waitFor(
+        async () => {
+          const rows: Array<{ event_type: string; correlation_id: string | null }> =
+            await bed.dataSource.query(
+              `SELECT event_type, correlation_id
+                 FROM audit_log
+                WHERE aggregate_id IN ($1, $2)
+                ORDER BY recorded_at ASC`,
+              [productId, categoryId],
+            );
+          return rows.length >= 6 ? rows : null;
+        },
+        { label: 'audit_log drained for full lifecycle', timeoutMs: 30_000 },
+      );
+
+      expect(auditRows.map((r) => r.event_type).sort()).toEqual(
+        [
+          'catalog.category.created',
+          'catalog.product.created',
+          'catalog.product.category_attached',
+          'catalog.product.attribute_added',
+          'catalog.product.activated',
+          'catalog.product.archived',
+        ].sort(),
+      );
+
+      // Every single hop carried the same correlationId end to end.
+      const distinctCorrIds = new Set(auditRows.map((r) => r.correlation_id));
+      expect(distinctCorrIds.size).toBe(1);
+      expect(distinctCorrIds.has(corr)).toBe(true);
+
+      // Idempotency at the audit boundary: each event_id processed exactly once.
+      const processed: Array<{ count: string }> = await bed.dataSource.query(
+        `SELECT count(DISTINCT event_id)::text AS count FROM audit_log
+          WHERE aggregate_id IN ($1, $2)`,
+        [productId, categoryId],
+      );
+      expect(processed[0].count).toBe('6');
+
+      // And the outbox has fully drained — no stragglers.
+      const pending: Array<{ count: string }> = await bed.dataSource.query(
+        `SELECT count(*)::text AS count FROM outbox
+          WHERE aggregate_id IN ($1, $2) AND status <> 'PROCESSED'`,
+        [productId, categoryId],
+      );
+      expect(pending[0].count).toBe('0');
     });
   });
 
