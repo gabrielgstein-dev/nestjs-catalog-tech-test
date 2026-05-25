@@ -13,6 +13,10 @@ import { CreateCategoryHandler } from './category/application/commands/create-ca
 import { RenameCategoryHandler } from './category/application/commands/rename-category.handler';
 import { ChangeCategoryParentHandler } from './category/application/commands/change-category-parent.handler';
 import { GetCategoryByIdHandler } from './category/application/queries/get-category-by-id.handler';
+import { ListCategoriesHandler } from './category/application/queries/list-categories.handler';
+import { ListProductsHandler } from './product/application/queries/list-products.handler';
+import { CategoryController } from './category/presentation/http/category.controller';
+import { ProductController } from './product/presentation/http/product.controller';
 import { CreateProductHandler } from './product/application/commands/create-product.handler';
 import { RenameProductHandler } from './product/application/commands/rename-product.handler';
 import { ChangeProductDescriptionHandler } from './product/application/commands/change-product-description.handler';
@@ -41,7 +45,12 @@ const CommandHandlers = [
   RemoveAttributeHandler,
 ];
 
-const QueryHandlers = [GetCategoryByIdHandler, GetProductByIdHandler];
+const QueryHandlers = [
+  GetCategoryByIdHandler,
+  ListCategoriesHandler,
+  GetProductByIdHandler,
+  ListProductsHandler,
+];
 
 @Module({
   imports: [
@@ -53,6 +62,7 @@ const QueryHandlers = [GetCategoryByIdHandler, GetProductByIdHandler];
       ProductCategoryEntity,
     ]),
   ],
+  controllers: [CategoryController, ProductController],
   providers: [
     { provide: CATEGORY_REPOSITORY, useClass: CategoryRepositoryTypeOrm },
     { provide: PRODUCT_REPOSITORY, useClass: ProductRepositoryTypeOrm },
