@@ -1,6 +1,7 @@
 import { Injectable, NestMiddleware } from '@nestjs/common';
 import { Request, Response, NextFunction } from 'express';
 import { randomUUID } from 'node:crypto';
+import { CorrelationContext } from '../../application/correlation-context';
 import { CORRELATION_ID_HEADER, CORRELATION_ID_KEY } from './correlation-id.constants';
 
 type CorrelatedRequest = Request & {
@@ -21,6 +22,9 @@ export class CorrelationIdMiddleware implements NestMiddleware {
     r.id = correlationId;
     r[CORRELATION_ID_KEY] = correlationId;
     res.setHeader(CORRELATION_ID_HEADER, correlationId);
-    next();
+
+    // Propagates the correlationId to anything running in this request's async scope —
+    // outbox writer, repositories, downstream handlers — without threading it as a parameter.
+    CorrelationContext.run(correlationId, () => next());
   }
 }

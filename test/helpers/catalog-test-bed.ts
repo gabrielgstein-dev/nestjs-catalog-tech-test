@@ -22,7 +22,10 @@ export async function startCatalogTestBed(): Promise<CatalogTestBed> {
     username: postgres.getUsername(),
     password: postgres.getPassword(),
     database: postgres.getDatabase(),
-    entities: [join(__dirname, '../../src/modules/**/infra/entities/*.entity.ts')],
+    entities: [
+      join(__dirname, '../../src/modules/**/infra/entities/*.entity.ts'),
+      join(__dirname, '../../src/shared/infra/**/*.entity.ts'),
+    ],
     migrations: [join(__dirname, '../../src/shared/infra/database/migrations/*.ts')],
     synchronize: false,
     logging: ['error'],

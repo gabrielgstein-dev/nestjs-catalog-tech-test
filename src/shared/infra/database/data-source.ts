@@ -3,7 +3,6 @@ import { DataSource, DataSourceOptions } from 'typeorm';
 import { config as loadEnv } from 'dotenv';
 import { join } from 'node:path';
 
-// Used by the TypeORM CLI for migrations (no synchronize, no Nest runtime).
 loadEnv();
 
 export const dataSourceOptions: DataSourceOptions = {
@@ -15,7 +14,10 @@ export const dataSourceOptions: DataSourceOptions = {
   database: process.env.DB_NAME ?? 'catalog',
   synchronize: false,
   migrationsRun: false,
-  entities: [join(__dirname, '../../../modules/**/infra/entities/*.entity.{ts,js}')],
+  entities: [
+    join(__dirname, '../../../modules/**/infra/entities/*.entity.{ts,js}'),
+    join(__dirname, '../../../shared/infra/**/*.entity.{ts,js}'),
+  ],
   migrations: [join(__dirname, 'migrations/*.{ts,js}')],
   logging: ['error', 'warn', 'migration'],
 };
