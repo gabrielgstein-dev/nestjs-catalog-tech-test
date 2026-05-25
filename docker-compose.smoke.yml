@@ -1,0 +1,22 @@
+services:
+  app:
+    build:
+      target: production
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: info
+    ports:
+      - "3010:3000"
+    command:
+      - sh
+      - -c
+      - "node ./node_modules/typeorm/cli.js -d dist/shared/infra/database/data-source.js migration:run && node dist/main.js"
+
+  postgres:
+    ports:
+      - "5434:5432"
+
+  rabbitmq:
+    ports:
+      - "5673:5672"
+      - "15673:15672"
