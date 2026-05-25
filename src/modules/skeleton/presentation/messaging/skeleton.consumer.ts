@@ -1,11 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { PinoLogger } from 'nestjs-pino';
 import { RabbitSubscribe } from '@golevelup/nestjs-rabbitmq';
 import { SkeletonAckEntity } from '../../infra/entities/skeleton-ack.entity';
 import { SKELETON_ROUTING_KEY } from '../../infra/messaging/skeleton-routing';
 import { CORRELATION_ID_HEADER } from '../../../../shared/infra/http/correlation-id.constants';
+import { BusinessActionLogger } from '../../../../shared/infra/logging/business-action.logger';
 
 interface PingMessage {
   id: string;
@@ -24,10 +24,8 @@ export class SkeletonConsumer {
   constructor(
     @InjectRepository(SkeletonAckEntity)
     private readonly acks: Repository<SkeletonAckEntity>,
-    private readonly logger: PinoLogger,
-  ) {
-    this.logger.setContext(SkeletonConsumer.name);
-  }
+    private readonly log: BusinessActionLogger,
+  ) {}
 
   @RabbitSubscribe({
     exchange: process.env.RABBITMQ_EXCHANGE ?? 'catalog.events',
@@ -40,9 +38,13 @@ export class SkeletonConsumer {
       | string
       | undefined;
     const correlationId = headerCorrelationId ?? message.correlationId;
+    const scoped = this.log.forCorrelationId(correlationId);
 
-    const child = this.logger.logger.child({ correlationId, pingId: message.id });
-    child.info('ping received from queue');
+    scoped.info({
+      action: 'skeleton.ping.received',
+      aggregateType: 'skeleton.ping',
+      aggregateId: message.id,
+    });
 
     await this.acks.insert({
       pingId: message.id,
@@ -50,6 +52,10 @@ export class SkeletonConsumer {
       status: 'processed',
     });
 
-    child.info('ack persisted');
+    scoped.success({
+      action: 'skeleton.ping.ack_persisted',
+      aggregateType: 'skeleton.ping',
+      aggregateId: message.id,
+    });
   }
 }

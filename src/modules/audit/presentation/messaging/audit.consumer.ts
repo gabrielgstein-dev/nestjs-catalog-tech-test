@@ -5,9 +5,9 @@ import {
   RabbitSubscribe,
 } from '@golevelup/nestjs-rabbitmq';
 import type { ConsumeMessage } from 'amqplib';
-import { PinoLogger } from 'nestjs-pino';
 import { AppConfigService } from '../../../../shared/config/app-config.service';
 import { CORRELATION_ID_HEADER } from '../../../../shared/infra/http/correlation-id.constants';
+import { BusinessActionLogger } from '../../../../shared/infra/logging/business-action.logger';
 import {
   AUDIT_QUEUE,
   AUDIT_DLX,
@@ -37,10 +37,8 @@ export class AuditConsumer {
     private readonly useCase: ProcessDomainEventUseCase,
     private readonly amqp: AmqpConnection,
     private readonly config: AppConfigService,
-    private readonly logger: PinoLogger,
-  ) {
-    this.logger.setContext(AuditConsumer.name);
-  }
+    private readonly log: BusinessActionLogger,
+  ) {}
 
   @RabbitSubscribe({
     exchange: CATALOG_EXCHANGE,
@@ -59,12 +57,16 @@ export class AuditConsumer {
     const headers = (props.headers ?? {}) as Record<string, unknown>;
 
     const eventId = (headers[EVENT_ID_HEADER] as string | undefined) ?? props.messageId;
+    const correlationId = (headers[CORRELATION_ID_HEADER] as string | undefined) ?? null;
+
     if (!eventId) {
-      this.logger.error({ headers }, 'message has no event id — sending to DLQ');
+      this.log.forCorrelationId(correlationId).error({
+        action: 'audit.event.dlq',
+        reason: 'missing_event_id',
+      });
       throw new Error('missing_event_id');
     }
 
-    const correlationId = (headers[CORRELATION_ID_HEADER] as string | undefined) ?? null;
     const attempts = ((headers[ATTEMPTS_HEADER] as number | undefined) ?? 0) + 1;
 
     const eventType = message.eventName ?? amqpMsg.fields.routingKey;
@@ -72,14 +74,30 @@ export class AuditConsumer {
     const occurredAt = this.parseOccurredAt(message.occurredAt);
 
     if (typeof eventType !== 'string' || typeof aggregateId !== 'string') {
-      this.logger.error({ eventId, message }, 'malformed event payload — sending to DLQ');
+      this.log.forCorrelationId(correlationId).error({
+        action: 'audit.event.dlq',
+        eventId,
+        reason: 'malformed_event',
+      });
       throw new Error('malformed_event');
     }
+
+    const aggregateType = aggregateTypeFor(eventType);
+    const scoped = this.log.forCorrelationId(correlationId);
+
+    scoped.info({
+      action: 'audit.event.received',
+      eventId,
+      eventType,
+      aggregateType,
+      aggregateId,
+      attempts,
+    });
 
     const input: DomainEventMessage = {
       eventId,
       eventType,
-      aggregateType: aggregateTypeFor(eventType),
+      aggregateType,
       aggregateId,
       payload: message as Record<string, unknown>,
       correlationId,
@@ -90,16 +108,27 @@ export class AuditConsumer {
       await this.useCase.execute(input);
     } catch (err) {
       if (attempts >= AUDIT_MAX_ATTEMPTS) {
-        this.logger.error(
-          { err, eventId, attempts, correlationId },
-          'audit consumer reached max attempts — message will go to DLQ',
-        );
+        scoped.error({
+          action: 'audit.event.dlq',
+          eventId,
+          eventType,
+          aggregateType,
+          aggregateId,
+          attempts,
+          reason: 'max_attempts_reached',
+          err,
+        });
         throw err;
       }
-      this.logger.warn(
-        { err, eventId, attempts, correlationId },
-        'audit consumer failed — re-queueing with incremented attempts header',
-      );
+      scoped.failure({
+        action: 'audit.event.retry_scheduled',
+        eventId,
+        eventType,
+        aggregateType,
+        aggregateId,
+        attempts,
+        reason: 'use_case_failed',
+      });
       await this.amqp.publish(this.config.rabbitmq.exchange, eventType, message, {
         persistent: true,
         messageId: eventId,

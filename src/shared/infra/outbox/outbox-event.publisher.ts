@@ -1,17 +1,15 @@
 import { Injectable } from '@nestjs/common';
-import { PinoLogger } from 'nestjs-pino';
 import { DomainEvent } from '../../domain/domain-event';
 import { DomainEventPublisher } from '../../application/domain-event-publisher.port';
 import { CorrelationContext } from '../../application/correlation-context';
 import { TransactionContext } from '../../application/transaction-context';
+import { BusinessActionLogger } from '../logging/business-action.logger';
 import { OUTBOX_STATUS } from './outbox.entity';
 import { aggregateTypeFor } from './outbox-routing';
 
 @Injectable()
 export class OutboxEventPublisher implements DomainEventPublisher {
-  constructor(private readonly logger: PinoLogger) {
-    this.logger.setContext(OutboxEventPublisher.name);
-  }
+  constructor(private readonly log: BusinessActionLogger) {}
 
   async publish(events: ReadonlyArray<DomainEvent>): Promise<void> {
     if (events.length === 0) {
@@ -28,11 +26,13 @@ export class OutboxEventPublisher implements DomainEventPublisher {
 
     const correlationId = CorrelationContext.get() ?? null;
     for (const event of events) {
-      await manager.query(
+      const aggregateType = aggregateTypeFor(event.eventName);
+      const rows: Array<{ id: string }> = await manager.query(
         `INSERT INTO outbox (aggregate_type, aggregate_id, event_type, payload, status, occurred_at, correlation_id)
-              VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7)`,
+              VALUES ($1, $2, $3, $4::jsonb, $5, $6, $7)
+           RETURNING id`,
         [
-          aggregateTypeFor(event.eventName),
+          aggregateType,
           event.aggregateId,
           event.eventName,
           JSON.stringify(this.serialize(event)),
@@ -41,16 +41,15 @@ export class OutboxEventPublisher implements DomainEventPublisher {
           correlationId,
         ],
       );
-    }
 
-    this.logger.debug(
-      {
-        correlationId,
-        count: events.length,
-        types: events.map((e) => e.eventName),
-      },
-      'outbox rows enqueued',
-    );
+      this.log.success({
+        action: 'messaging.outbox.enqueued',
+        aggregateType,
+        aggregateId: event.aggregateId,
+        eventType: event.eventName,
+        eventId: rows[0]?.id,
+      });
+    }
   }
 
   private serialize(event: DomainEvent): Record<string, unknown> {

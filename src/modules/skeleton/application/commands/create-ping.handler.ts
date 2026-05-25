@@ -1,13 +1,13 @@
 import { CommandHandler, ICommandHandler } from '@nestjs/cqrs';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { PinoLogger } from 'nestjs-pino';
 import { AmqpConnection } from '@golevelup/nestjs-rabbitmq';
 import { randomUUID } from 'node:crypto';
 import { SkeletonPingEntity } from '../../infra/entities/skeleton-ping.entity';
 import { AppConfigService } from '../../../../shared/config/app-config.service';
 import { SKELETON_ROUTING_KEY } from '../../infra/messaging/skeleton-routing';
 import { CORRELATION_ID_HEADER } from '../../../../shared/infra/http/correlation-id.constants';
+import { BusinessActionLogger } from '../../../../shared/infra/logging/business-action.logger';
 import { CreatePingCommand } from './create-ping.command';
 
 export interface CreatePingResult {
@@ -22,17 +22,19 @@ export class CreatePingHandler implements ICommandHandler<CreatePingCommand, Cre
     private readonly pings: Repository<SkeletonPingEntity>,
     private readonly amqp: AmqpConnection,
     private readonly config: AppConfigService,
-    private readonly logger: PinoLogger,
-  ) {
-    this.logger.setContext(CreatePingHandler.name);
-  }
+    private readonly log: BusinessActionLogger,
+  ) {}
 
   async execute(command: CreatePingCommand): Promise<CreatePingResult> {
     const id = randomUUID();
     const { payload, correlationId } = command;
 
     await this.pings.insert({ id, correlationId, payload });
-    this.logger.info({ correlationId, pingId: id }, 'ping persisted');
+    this.log.success({
+      action: 'skeleton.ping.persisted',
+      aggregateType: 'skeleton.ping',
+      aggregateId: id,
+    });
 
     await this.amqp.publish(
       this.config.rabbitmq.exchange,
@@ -40,7 +42,11 @@ export class CreatePingHandler implements ICommandHandler<CreatePingCommand, Cre
       { id, payload, correlationId },
       { headers: { [CORRELATION_ID_HEADER]: correlationId }, persistent: true },
     );
-    this.logger.info({ correlationId, pingId: id }, 'ping published');
+    this.log.success({
+      action: 'skeleton.ping.published',
+      aggregateType: 'skeleton.ping',
+      aggregateId: id,
+    });
 
     return { id, correlationId };
   }

@@ -4,6 +4,7 @@ import { DataSource, EntityManager } from 'typeorm';
 import { PinoLogger } from 'nestjs-pino';
 import { AppConfigService } from '../../config/app-config.service';
 import { CORRELATION_ID_HEADER } from '../http/correlation-id.constants';
+import { BusinessActionLogger } from '../logging/business-action.logger';
 import { OUTBOX_STATUS } from './outbox.entity';
 import { routingKeyFor } from './outbox-routing';
 import {
@@ -35,6 +36,7 @@ export class OutboxRelay implements OnModuleInit, OnModuleDestroy {
     private readonly amqp: AmqpConnection,
     private readonly config: AppConfigService,
     private readonly logger: PinoLogger,
+    private readonly actionLog: BusinessActionLogger,
     @Inject(OUTBOX_RELAY_OPTIONS) private readonly options: OutboxRelayOptions,
   ) {
     this.logger.setContext(OutboxRelay.name);
@@ -112,6 +114,14 @@ export class OutboxRelay implements OnModuleInit, OnModuleDestroy {
         const ok = await this.publishRow(row);
         if (ok) {
           await this.markProcessed(manager, row.id);
+          this.actionLog.forCorrelationId(row.correlation_id).success({
+            action: 'messaging.outbox.published',
+            aggregateType: row.aggregate_type,
+            aggregateId: row.aggregate_id,
+            eventId: row.id,
+            eventType: row.event_type,
+            attempts: row.attempts + 1,
+          });
           published++;
         } else {
           await this.markFailedAttempt(manager, row);
@@ -151,15 +161,29 @@ export class OutboxRelay implements OnModuleInit, OnModuleDestroy {
         },
       );
       if (!ok) {
-        this.logger.warn({ outboxId: row.id }, 'broker rejected publish (buffer full?)');
+        this.actionLog.forCorrelationId(row.correlation_id).failure({
+          action: 'messaging.outbox.publish',
+          aggregateType: row.aggregate_type,
+          aggregateId: row.aggregate_id,
+          eventId: row.id,
+          eventType: row.event_type,
+          attempts: row.attempts + 1,
+          reason: 'broker_rejected_publish',
+        });
         return false;
       }
       return true;
     } catch (err) {
-      this.logger.warn(
-        { err, outboxId: row.id, eventType: row.event_type },
-        'outbox publish failed — will retry next tick',
-      );
+      this.actionLog.forCorrelationId(row.correlation_id).error({
+        action: 'messaging.outbox.publish',
+        aggregateType: row.aggregate_type,
+        aggregateId: row.aggregate_id,
+        eventId: row.id,
+        eventType: row.event_type,
+        attempts: row.attempts + 1,
+        reason: 'publish_threw',
+        err,
+      });
       return false;
     }
   }
@@ -189,6 +213,15 @@ export class OutboxRelay implements OnModuleInit, OnModuleDestroy {
           WHERE id = $4`,
         [OUTBOX_STATUS.FAILED, nextAttempts, errorMsg, row.id],
       );
+      this.actionLog.forCorrelationId(row.correlation_id).error({
+        action: 'messaging.outbox.failed_terminal',
+        aggregateType: row.aggregate_type,
+        aggregateId: row.aggregate_id,
+        eventId: row.id,
+        eventType: row.event_type,
+        attempts: nextAttempts,
+        reason: 'max_attempts_reached',
+      });
       return;
     }
 
@@ -199,6 +232,15 @@ export class OutboxRelay implements OnModuleInit, OnModuleDestroy {
         WHERE id = $3`,
       [nextAttempts, errorMsg, row.id],
     );
+    this.actionLog.forCorrelationId(row.correlation_id).failure({
+      action: 'messaging.outbox.publish_retry_scheduled',
+      aggregateType: row.aggregate_type,
+      aggregateId: row.aggregate_id,
+      eventId: row.id,
+      eventType: row.event_type,
+      attempts: nextAttempts,
+      reason: 'publish_attempt_failed',
+    });
   }
 }
 
