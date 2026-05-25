@@ -86,6 +86,8 @@ export const startMessagingTestBed = async (
   const moduleRef = await builder.compile();
   const app = moduleRef.createNestApplication({ bufferLogs: true });
   app.useLogger(app.get(Logger));
+  const { configureHttpApp } = await import('../../src/shared/infra/http/bootstrap-http');
+  configureHttpApp(app);
   app.enableShutdownHooks();
   await app.init();
 

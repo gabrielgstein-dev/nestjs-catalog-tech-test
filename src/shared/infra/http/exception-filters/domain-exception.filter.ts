@@ -13,9 +13,17 @@ import { DomainError } from '../../../domain/domain-error';
 import { CorrelationContext } from '../../../application/correlation-context';
 import { CORRELATION_ID_HEADER } from '../correlation-id.constants';
 import { AppConfigService } from '../../../config/app-config.service';
+import { domainErrorToHttpStatus } from '../domain-error-status';
 import { ErrorResponse } from './error-response.contract';
 
-const NOT_FOUND_CODE_SUFFIX = 'not_found';
+const reasonPhrase = (status: number): string => {
+  if (status === HttpStatus.NOT_FOUND) return 'Not Found';
+  if (status === HttpStatus.CONFLICT) return 'Conflict';
+  if (status === HttpStatus.BAD_REQUEST) return 'Bad Request';
+  if (status === HttpStatus.UNPROCESSABLE_ENTITY) return 'Unprocessable Entity';
+  if (status === HttpStatus.INTERNAL_SERVER_ERROR) return 'Internal Server Error';
+  return HttpStatus[status] ?? 'Error';
+};
 
 @Catch()
 export class DomainExceptionFilter implements ExceptionFilter {
@@ -60,7 +68,7 @@ export class DomainExceptionFilter implements ExceptionFilter {
     if (exception instanceof HttpException) {
       const status = exception.getStatus();
       const raw = exception.getResponse();
-      const errorName = HttpStatus[status] ?? 'Error';
+      const errorName = reasonPhrase(status);
       if (typeof raw === 'string') {
         return { statusCode: status, error: errorName, message: raw };
       }
@@ -72,20 +80,18 @@ export class DomainExceptionFilter implements ExceptionFilter {
     }
 
     if (exception instanceof DomainError) {
-      const status = exception.code.endsWith(NOT_FOUND_CODE_SUFFIX)
-        ? HttpStatus.NOT_FOUND
-        : HttpStatus.CONFLICT;
+      const status = domainErrorToHttpStatus(exception.code);
       return {
         statusCode: status,
-        error: status === HttpStatus.NOT_FOUND ? 'Not Found' : 'Conflict',
+        error: reasonPhrase(status),
         message: exception.message,
         code: exception.code,
       };
     }
 
-    // Plain Error usually originates from VO validation (e.g. ProductName.of).
-    // Treat as 400 Bad Request — the input could not be coerced to a valid value object.
     if (exception instanceof Error && exception.constructor === Error) {
+      // Plain Error usually originates from value-object validation (e.g. ProductName.of).
+      // Treat as 400 — the request could not be coerced into a valid VO.
       return {
         statusCode: HttpStatus.BAD_REQUEST,
         error: 'Bad Request',
