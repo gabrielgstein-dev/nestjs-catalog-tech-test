@@ -89,6 +89,7 @@
       "ts"
     ],
     "coverageDirectory": "<rootDir>/coverage",
+    "testTimeout": 180000,
     "coverageReporters": [
       "text",
       "text-summary",
@@ -208,8 +209,7 @@
         "moduleNameMapper": {
           "^src/(.*)$": "<rootDir>/src/$1"
         },
-        "testEnvironment": "node",
-        "testTimeout": 180000
+        "testEnvironment": "node"
       }
     ]
   }
