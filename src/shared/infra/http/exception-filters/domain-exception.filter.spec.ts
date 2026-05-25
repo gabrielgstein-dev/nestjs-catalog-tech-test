@@ -76,7 +76,10 @@ describe('DomainExceptionFilter', () => {
       const filter = new DomainExceptionFilter();
       const { host, captured } = makeHost();
       filter.catch(
-        new HttpException({ message: 'conflict-msg', error: 'CustomConflict' }, HttpStatus.CONFLICT),
+        new HttpException(
+          { message: 'conflict-msg', error: 'CustomConflict' },
+          HttpStatus.CONFLICT,
+        ),
         host,
       );
       expect(captured.body?.error).toBe('CustomConflict');

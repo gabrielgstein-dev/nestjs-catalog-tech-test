@@ -7,8 +7,8 @@ describe('TypeOrmUnitOfWork', () => {
     const captured: EntityManager[] = [];
     const fakeManager = { id: 'mgr-1' } as unknown as EntityManager;
     const dataSource = {
-      transaction: jest.fn(async <T>(cb: (m: EntityManager) => Promise<T>): Promise<T> =>
-        cb(fakeManager),
+      transaction: jest.fn(
+        async <T>(cb: (m: EntityManager) => Promise<T>): Promise<T> => cb(fakeManager),
       ),
     } as unknown as DataSource;
 

@@ -1,10 +1,7 @@
 import { DataSource, EntityManager } from 'typeorm';
 import { silentBusinessActionLogger } from '../../../shared/infra/logging/__test-fixtures__/silent-business-action-logger';
 import { AUDIT_CONSUMER_NAME } from '../infra/messaging/audit-routing';
-import {
-  DomainEventMessage,
-  ProcessDomainEventUseCase,
-} from './process-domain-event.use-case';
+import { DomainEventMessage, ProcessDomainEventUseCase } from './process-domain-event.use-case';
 
 interface RecordedQuery {
   sql: string;

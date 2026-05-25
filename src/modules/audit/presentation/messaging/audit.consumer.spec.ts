@@ -35,8 +35,7 @@ const makeConfig = (): AppConfigService =>
 
 const makeUseCase = (
   execute: jest.Mock = jest.fn().mockResolvedValue({ recorded: true }),
-): ProcessDomainEventUseCase =>
-  ({ execute }) as unknown as ProcessDomainEventUseCase;
+): ProcessDomainEventUseCase => ({ execute }) as unknown as ProcessDomainEventUseCase;
 
 const validMessage = () => ({
   eventName: 'catalog.product.created',
@@ -184,10 +183,7 @@ describe('AuditConsumer.handle', () => {
         makeConfig(),
         silentBusinessActionLogger(),
       );
-      await sut.handle(
-        validMessage(),
-        makeMsg({ headers: { 'x-event-id': 'evt-6' } }),
-      );
+      await sut.handle(validMessage(), makeMsg({ headers: { 'x-event-id': 'evt-6' } }));
       expect(execute.mock.calls[0][0].correlationId).toBeNull();
     });
   });
@@ -219,10 +215,7 @@ describe('AuditConsumer.handle', () => {
 
       const broken = { ...validMessage(), aggregateId: undefined } as Record<string, unknown>;
       await expect(
-        sut.handle(
-          broken,
-          makeMsg({ headers: { 'x-event-id': 'evt-bad' } }),
-        ),
+        sut.handle(broken, makeMsg({ headers: { 'x-event-id': 'evt-bad' } })),
       ).rejects.toThrow('malformed_event');
       expect(execute).not.toHaveBeenCalled();
     });
@@ -319,10 +312,7 @@ describe('AuditConsumer.handle', () => {
         silentBusinessActionLogger(),
       );
 
-      await sut.handle(
-        validMessage(),
-        makeMsg({ headers: { 'x-event-id': 'evt-first' } }),
-      );
+      await sut.handle(validMessage(), makeMsg({ headers: { 'x-event-id': 'evt-first' } }));
 
       expect(spy).toHaveBeenCalledTimes(1);
       expect(spy.mock.calls[0][3].headers['x-attempts']).toBe(1);
