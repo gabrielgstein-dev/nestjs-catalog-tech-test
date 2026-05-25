@@ -7,6 +7,7 @@
  * Usa TypeOrmModule.forRoot direto (sem DatabaseModule / AppConfigService) para
  * evitar dependência de variáveis de ambiente no CI.
  */
+import { Global, Module } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { join } from 'node:path';
@@ -16,6 +17,23 @@ import { CATEGORY_REPOSITORY } from '../src/modules/catalog/category/domain/port
 import { PRODUCT_REPOSITORY } from '../src/modules/catalog/product/domain/ports/product.repository';
 import { CategoryRepositoryTypeOrm } from '../src/modules/catalog/category/infra/repositories/category.repository.typeorm';
 import { ProductRepositoryTypeOrm } from '../src/modules/catalog/product/infra/repositories/product.repository.typeorm';
+import { DOMAIN_EVENT_PUBLISHER } from '../src/shared/application/domain-event-publisher.port';
+import { UNIT_OF_WORK } from '../src/shared/application/unit-of-work.port';
+import { InMemoryDomainEventPublisher } from '../src/shared/application/__test-fixtures__/in-memory-domain-event-publisher';
+import { PassThroughUnitOfWork } from '../src/shared/application/__test-fixtures__/pass-through-unit-of-work';
+
+// In production these come from OutboxModule and DatabaseModule (both @Global).
+// Here we stub them via a Global test module so CatalogModule's handlers resolve
+// without us pulling the full app wiring.
+@Global()
+@Module({
+  providers: [
+    { provide: DOMAIN_EVENT_PUBLISHER, useClass: InMemoryDomainEventPublisher },
+    { provide: UNIT_OF_WORK, useClass: PassThroughUnitOfWork },
+  ],
+  exports: [DOMAIN_EVENT_PUBLISHER, UNIT_OF_WORK],
+})
+class CatalogTestStubs {}
 
 jest.setTimeout(180_000);
 
@@ -45,6 +63,7 @@ describe('CatalogModule DI wire (integration)', () => {
           entities: [join(__dirname, '../src/modules/**/infra/entities/*.entity.ts')],
           logging: false,
         }),
+        CatalogTestStubs,
         CatalogModule,
       ],
     }).compile();
