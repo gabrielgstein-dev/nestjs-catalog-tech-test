@@ -5,55 +5,61 @@ CQRS, Transactional Outbox + RabbitMQ, e observabilidade ponta a ponta via
 `correlationId`. **PostgreSQL** com TypeORM (migrations versionadas, sem
 `synchronize`).
 
-**Status atual:** Fases 0–8 entregues. **269 unit + 78 e2e** verdes, mutation
-score 80% no domínio, `npm audit --audit-level=high` sem CVEs no caminho de
-runtime de produção. `docker compose up` boota limpo em máquina pristina
-(~17s do `app Starting` até `/health` 200).
+**Status:** entregável. **269 unit + 78 e2e** verdes (347 no total), gating
+de cobertura por camada, mutation score 80% no domínio. `docker compose up`
+boota limpo em máquina pristina (~17s do `app Starting` até `/health` 200).
 
 ---
 
-## 1. Como rodar (Docker Compose, do zero)
+## Sumário
 
-### Pré-requisitos
-- Docker 24+ com Compose v2 (`docker compose version` → v2.x ou superior).
-- Portas livres no host: **3000** (app), **5433** (Postgres), **5672** + **15672** (RabbitMQ + management UI). Se alguma estiver ocupada, use o smoke isolado da próxima seção.
+1. [Como rodar](#1-como-rodar)
+2. [Como rodar os testes](#2-como-rodar-os-testes)
+3. [Endpoints](#3-endpoints)
+4. [Fluxo completo (curl)](#4-fluxo-completo-curl)
+5. [Arquitetura](#5-arquitetura)
+6. [Mensageria & auditoria — zero-loss](#6-mensageria--auditoria--zero-loss)
+7. [Variáveis de ambiente](#7-variáveis-de-ambiente)
+8. [Estrutura do código](#8-estrutura-do-código)
+9. [Decisões arquiteturais (resumo)](#9-decisões-arquiteturais-resumo)
+10. [Desejáveis entregues](#10-desejáveis-entregues)
+11. [Comandos npm](#11-comandos-npm)
 
-### Boot
+---
+
+## 1. Como rodar
+
+Pré-requisitos: **Docker 24+** com Compose v2. Portas livres no host: **3000**
+(app), **5433** (Postgres), **5672** + **15672** (RabbitMQ + management UI).
+
 ```bash
 cp .env.example .env
 docker compose up --build
 ```
 
-O Compose espera Postgres e RabbitMQ ficarem **healthy** antes de iniciar o
-container do app (`depends_on: condition: service_healthy`). Migrations rodam
-no boot do app. Tempo total típico do build do zero ao `/health` 200: **~15–20 s**.
+O Compose espera Postgres e RabbitMQ ficarem **healthy** antes de iniciar o app
+(`depends_on: condition: service_healthy`). Migrations rodam no boot. Tempo
+típico do build a `/health` 200: **~15–20 s**.
 
-Acessos:
-- API ........................ http://localhost:3000
-- Swagger UI ................. http://localhost:3000/docs
-- Health check ............... http://localhost:3000/health
-- RabbitMQ management UI ..... http://localhost:15672 (guest / guest)
+| Acesso | URL |
+|---|---|
+| API                    | http://localhost:3000 |
+| Swagger UI             | http://localhost:3000/docs |
+| Health check           | http://localhost:3000/health |
+| RabbitMQ management UI | http://localhost:15672 (guest / guest) |
 
-Tear-down (com volumes — limpa banco e estado do Rabbit):
-```bash
-docker compose down -v
-```
+Tear-down (com volumes): `docker compose down -v`.
 
-### Smoke isolado da imagem de produção
-
-Se as portas padrão estiverem ocupadas ou se você quiser provar a imagem
-multi-stage real (`node dist/main.js`, não-root, sem `ts-node`, migrations
-compiladas), use o overlay `docker-compose.smoke.yml`:
+**Smoke isolado da imagem de produção** (portas remapeadas — não colide com
+nada rodando no host):
 
 ```bash
 docker compose -p catalog-smoke \
-  -f docker-compose.yml \
-  -f docker-compose.smoke.yml \
+  -f docker-compose.yml -f docker-compose.smoke.yml \
   up --build -d
+# app :3010, postgres :5434, rabbit :5673 / management :15673
+docker compose -p catalog-smoke -f docker-compose.yml -f docker-compose.smoke.yml down -v
 ```
-
-Sobe em `:3010` (app), `:5434` (postgres), `:5673` + `:15673` (rabbit).
-Tear-down: `docker compose -p catalog-smoke -f docker-compose.yml -f docker-compose.smoke.yml down -v`.
 
 ---
 
@@ -61,39 +67,88 @@ Tear-down: `docker compose -p catalog-smoke -f docker-compose.yml -f docker-comp
 
 | Script | O quê |
 |---|---|
-| `npm test`           | **269 unit tests** (Jest, rápido — sem Docker) |
-| `npm run test:e2e`   | **78 e2e** (Postgres + RabbitMQ reais via Testcontainers) |
-| `npm run test:cov`   | Coverage só dos unit |
-| `npm run test:cov:all` | Coverage **combinado** unit + e2e, **gating real** via `coverageThreshold` |
-| `npm run lint`       | ESLint + Prettier (`--max-warnings=0`) |
-| `npm run typecheck`  | `tsc --noEmit` (strict) |
-| `npm run build`      | `nest build` para `./dist` |
+| `npm test`             | **269 unit** (Jest, sem Docker, ~8s) |
+| `npm run test:e2e`     | **78 e2e** (Postgres + RabbitMQ reais via Testcontainers) |
+| `npm run test:cov:all` | Coverage **combinado** unit + e2e com **gating real** por camada |
+| `npm run lint`         | ESLint + Prettier (`--max-warnings=0`) |
+| `npm run typecheck`    | `tsc --noEmit` (strict) |
+| `npm run build`        | `nest build` para `./dist` |
 
-### Coverage thresholds (gating em `package.json#jest.coverageThreshold`)
+**Coverage thresholds** (em `package.json#jest.coverageThreshold` — Jest aborta
+se cair abaixo):
 
-| Camada                                          | stmt / branch / func / line |
+| Camada | stmt / branch / func / line |
 |---|---|
-| `**/domain/**` (puro, crítico)                   | 100 / 100 / 100 / 100 |
-| `**/application/**` (use cases)                  |  95 /  90 /  95 /  95 |
-| `**/presentation/**` (HTTP + consumer)           |  90 /  85 /  90 /  90 |
-| `shared/infra/**` (relay/filters/wiring)         |  80 /  75 /  80 /  80 |
-| `global`                                         |  85 /  80 /  85 /  85 |
+| `**/domain/**`         | 100 / 100 / 100 / 100 |
+| `**/application/**`    |  95 /  90 /  95 /  95 |
+| `**/presentation/**`   |  90 /  85 /  90 /  90 |
+| `shared/infra/**`      |  80 /  75 /  80 /  80 |
+| `global`               |  85 /  80 /  85 /  85 |
 
 Cobertura combinada atual: **stmts 98%, branches 94%, funcs 97%, lines 98%**.
 
-### Mutation testing (opcional, sinal de qualidade do domínio)
-
-```bash
-npx stryker run
-```
-
-Score atual: **80.10%** (covered 83.16%) — `Product` 93.75%, `Category` 100%,
-shared/domain 100%. Survivors são quase todos StringLiteral em mensagens de
-erro (não pinamos texto). Escopo limitado ao domínio de propósito.
+**Mutation testing** (opcional, escopo: domínio): `npx stryker run` —
+score 80% (`Product` 93%, `Category` 100%, `shared/domain` 100%).
 
 ---
 
-## 3. Fluxo completo (curl) — provado no smoke isolado
+## 3. Endpoints
+
+Documentação interativa em **`/docs`** (Swagger).
+
+### `/products`
+| Verb | Path | |
+|---|---|---|
+| `POST`   | `/products`                              | cria em `DRAFT` |
+| `GET`    | `/products?status=&limit=&offset=`       | lista paginada (default `limit=50`, `offset=0`) |
+| `GET`    | `/products/:id`                          | consulta |
+| `PATCH`  | `/products/:id`                          | rename + descrição (parcial — só toca campo enviado) |
+| `POST`   | `/products/:id/activate`                 | ativa (gates: ≥1 categoria, ≥1 atributo, nome único entre não-arquivados) |
+| `POST`   | `/products/:id/archive`                  | arquiva (terminal) |
+| `POST`   | `/products/:id/categories` `{categoryId}`| associa categoria |
+| `DELETE` | `/products/:id/categories/:categoryId`   | remove associação |
+| `POST`   | `/products/:id/attributes` `{key,value}` | adiciona atributo (chave única no produto) |
+| `PATCH`  | `/products/:id/attributes/:key` `{value}`| atualiza valor |
+| `DELETE` | `/products/:id/attributes/:key`          | remove atributo |
+
+### `/categories`
+| Verb | Path | |
+|---|---|---|
+| `POST`  | `/categories` `{name, parentId?}`        | cria (nome único global) |
+| `GET`   | `/categories?limit=&offset=`             | lista paginada |
+| `GET`   | `/categories/:id`                        | consulta |
+| `PATCH` | `/categories/:id` `{name?, parentId?}`   | rename + muda pai (parcial — `parentId: null` torna raiz) |
+
+### `/health`
+`GET /health` — Postgres ping + `RabbitMQ.connected` (terminus).
+
+### Mapeamento `DomainError` → HTTP
+
+| Caso | Status |
+|---|---|
+| `code` termina em `_not_found`                 | **404** |
+| qualquer outro `DomainError` (conflito/estado) | **409** (RFC 9110 §15.5.10) |
+| Falha do `ValidationPipe` ou `Error` cru de VO | **400** |
+| Outras exceptions                              | **500** (mensagem genérica em produção) |
+
+Body padronizado de erro carrega `code` (estável), `message`, `correlationId`,
+`timestamp` e `path` — e ecoa `x-correlation-id` no header da resposta.
+
+```json
+{
+  "statusCode": 409,
+  "error": "Conflict",
+  "code": "product.cannot_be_activated",
+  "message": "Product cannot be activated: at least one category is required",
+  "correlationId": "demo-abc-123",
+  "timestamp": "2026-05-25T17:14:45.984Z",
+  "path": "/products/.../activate"
+}
+```
+
+---
+
+## 4. Fluxo completo (curl)
 
 ```bash
 CORR="demo-$(date +%s)"
@@ -127,114 +182,46 @@ docker compose logs app | grep $CORR
 
 ---
 
-## 4. Endpoints
+## 5. Arquitetura
 
-Documentação completa em **`/docs`** (Swagger gerado automaticamente).
+**Clean / Hexagonal por módulo + CQRS.** Cada módulo de negócio (`catalog/product`,
+`catalog/category`, `audit`) tem 4 camadas isoladas; dependências apontam
+**só pra dentro** (`presentation/infra → application → domain`).
 
-### `/products`
-| Verb | Path | |
-|---|---|---|
-| `POST`   | `/products`                              | cria em `DRAFT` |
-| `GET`    | `/products?status=&limit=&offset=`       | lista paginada (default `limit=50`, `offset=0`) |
-| `GET`    | `/products/:id`                          | consulta |
-| `PATCH`  | `/products/:id`                          | rename + descrição (parcial — só toca campo enviado) |
-| `POST`   | `/products/:id/activate`                 | ativa (gates: ≥1 categoria, ≥1 atributo, nome único entre não-arquivados) |
-| `POST`   | `/products/:id/archive`                  | arquiva (estado terminal) |
-| `POST`   | `/products/:id/categories` `{categoryId}`| associa categoria |
-| `DELETE` | `/products/:id/categories/:categoryId`   | remove associação |
-| `POST`   | `/products/:id/attributes` `{key,value}` | adiciona atributo (chave única no produto) |
-| `PATCH`  | `/products/:id/attributes/:key` `{value}`| atualiza valor do atributo |
-| `DELETE` | `/products/:id/attributes/:key`          | remove atributo |
-
-### `/categories`
-| Verb | Path | |
-|---|---|---|
-| `POST`  | `/categories` `{name, parentId?}`  | cria (nome único global) |
-| `GET`   | `/categories?limit=&offset=`       | lista paginada |
-| `GET`   | `/categories/:id`                  | consulta |
-| `PATCH` | `/categories/:id` `{name?, parentId?}` | rename + muda pai (parcial — `parentId: null` torna raiz) |
-
-### `/health`
-| Verb | Path | |
-|---|---|---|
-| `GET` | `/health` | Postgres ping + RabbitMQ.connected (terminus) |
-
-### Mapeamento `DomainError` → HTTP (ver [ADR-005](docs/adr/0005-mapeamento-domain-error-http.md))
-
-| Faixa | Códigos | Status |
-|---|---|---|
-| Recurso ausente | `*.not_found` | **404** |
-| Conflito de estado | `*.duplicate_*`, `*.cannot_be_*`, `*.archived_is_immutable`, `*.cannot_be_own_parent`, `*.invalid_state`, etc. | **409** |
-| Input inválido | falha do ValidationPipe ou `Error` cru de VO | **400** |
-| Inesperado | qualquer outra exception | **500** (mensagem genérica em prod) |
-
-Toda resposta de erro carrega `correlationId` no header `x-correlation-id` **e** no body:
-
-```json
-{
-  "statusCode": 409,
-  "error": "Conflict",
-  "code": "product.cannot_be_activated",
-  "message": "Product cannot be activated: at least one category is required",
-  "correlationId": "demo-abc-123",
-  "timestamp": "2026-05-25T17:14:45.984Z",
-  "path": "/products/.../activate"
-}
-```
+- **`domain/`** — agregados, value objects, eventos, erros. **Puro** (sem
+  `@nestjs/*`, sem `typeorm`, sem `pino`). Invariantes vivem aqui.
+- **`application/`** — use cases na forma de CQRS Command/Query handlers
+  (`@nestjs/cqrs`). Conhece apenas **ports** (`PRODUCT_REPOSITORY`,
+  `DOMAIN_EVENT_PUBLISHER`, `UNIT_OF_WORK`), nunca implementações.
+- **`infra/`** — adaptadores: repositórios TypeORM, mappers domínio↔persistência,
+  publishers AMQP, `OutboxEventPublisher` que implementa o port de domínio.
+- **`presentation/`** — controllers HTTP (`class-validator` no boundary, DTOs,
+  Swagger), AMQP consumers.
 
 ---
 
-## 5. Arquitetura — visão rápida
+## 6. Mensageria & auditoria — zero-loss
 
-**Clean / Hexagonal por módulo + CQRS.** Cada módulo de negócio tem suas 4
-camadas isoladas; dependências apontam **só pra dentro** (presentation/infra →
-application → domain).
+**Transactional Outbox** com **RabbitMQ** como transporte:
 
-- **domain/** — agregados, value objects, eventos. **Puro** (sem NestJS, sem
-  TypeORM, sem pino). Auditado por grep ao longo das fases.
-- **application/** — use cases (CQRS commands/queries). Conhece **ports**
-  (`PRODUCT_REPOSITORY`, `DOMAIN_EVENT_PUBLISHER`, `UNIT_OF_WORK`), não
-  adaptadores.
-- **infra/** — TypeORM repositories, mappers, AMQP wiring, OutboxEventPublisher
-  (implementa o port).
-- **presentation/** — controllers HTTP (`class-validator` no boundary), DTOs,
-  AMQP consumers, Swagger.
+- A mutação do agregado **e** o `INSERT` na tabela `outbox` ocorrem na
+  **mesma transação SQL** (`UnitOfWork.run` → `TransactionContext` expõe
+  o `EntityManager` para o `OutboxEventPublisher`). Se a mutação falha,
+  a linha do outbox também é desfeita.
+- Um **relay** (`OutboxRelay`, `OnModuleInit`) faz polling
+  (`pollIntervalMs=500ms`, `batchSize=50`) com
+  `SELECT … WHERE status='PENDING' FOR UPDATE SKIP LOCKED` — sem
+  contenção entre instâncias. Publica no exchange `catalog.events` com
+  `persistent: true`, `messageId = outbox.id` e header `x-correlation-id`.
+- Se o broker estiver fora, o tick falha; nada se perde. A mutação já
+  está commitada; o tick seguinte republica.
 
-Decisões arquiteturais consolidadas em [docs/adr/](docs/adr/) — uma decisão
-por arquivo, formato curto (Contexto / Decisão / Consequências / Alternativas).
+**Consumer idempotente** (`AuditConsumer` no módulo `audit/`):
 
-| ADR | Decisão |
-|---|---|
-| [001](docs/adr/0001-arquitetura-clean-hexagonal-cqrs.md) | Clean / Hexagonal por módulo + CQRS |
-| [002](docs/adr/0002-transactional-outbox-rabbitmq.md)    | Transactional Outbox + RabbitMQ |
-| [003](docs/adr/0003-consumer-idempotente-retry-dlq.md)   | Consumer idempotente (inbox/dedupe) + retry + DLQ |
-| [004](docs/adr/0004-unicidade-nome-produto.md)           | Unicidade do nome de produto: gate de ativação **+** partial unique index |
-| [005](docs/adr/0005-mapeamento-domain-error-http.md)     | DomainError → HTTP: 409 uniforme p/ conflitos (RFC 9110) |
-| [006](docs/adr/0006-observabilidade-logs-estruturados.md)| Observabilidade: pino estruturado + correlationId; log ≠ audit_log |
-| [007](docs/adr/0007-docker-compose-multi-stage.md)       | Docker: base + override + overlays por ambiente; Dockerfile multi-stage |
-| [008](docs/adr/0008-estrategia-testes-coverage-mutation.md) | Testes: unit/e2e separados, thresholds por camada, mutation no domínio |
-
----
-
-## 6. Mensageria & auditoria (garantia de zero-loss)
-
-**Transactional Outbox**: a mutação do agregado **e** a inserção da linha em
-`outbox` commitam na mesma transação SQL (`UnitOfWork.run` → `TransactionContext`
-expõe o `EntityManager` para o `OutboxEventPublisher`). Se a mutação falhar, a
-linha do outbox também é desfeita. Se o broker estiver fora, a mutação já está
-persistida; nada se perde.
-
-**Relay**: serviço Nest (`OutboxRelay`) que faz polling
-(`pollIntervalMs=500ms`, `batchSize=50`) usando `SELECT … WHERE status='PENDING'
-ORDER BY occurred_at ASC LIMIT $n FOR UPDATE SKIP LOCKED` para reivindicar lotes
-sem contenção entre instâncias. Publica no exchange `catalog.events` (tópico)
-com `messageId = outbox.id`, `persistent = true` e header `x-correlation-id`.
-
-**Consumer** (`AuditConsumer` no módulo `audit/`): grava em `audit_log` dentro
-de uma transação que **primeiro** insere em `processed_event (event_id, consumer)`
-com `INSERT … ON CONFLICT DO NOTHING`. Reentrega → conflito → audit_log **não
-duplica**. Falha do `useCase.execute` → republish com `x-attempts` incrementado;
-ao bater `AUDIT_MAX_ATTEMPTS=5`, a mensagem vai pra DLQ `audit.events.dlq`.
+- Tabela `processed_event(event_id, consumer)`: `INSERT … ON CONFLICT DO NOTHING`
+  como **primeira** operação. Reentrega → conflito → `audit_log` não duplica.
+- Se o use case falha, republica com `x-attempts` incrementado. Ao bater
+  `AUDIT_MAX_ATTEMPTS=5`, vai pra DLQ `audit.events.dlq` via `x-dead-letter-exchange`.
 
 ```mermaid
 sequenceDiagram
@@ -267,21 +254,21 @@ sequenceDiagram
     DB-->>AC: COMMIT
 ```
 
-**Zero-loss provado em e2e**: [test/messaging-outbox.e2e-spec.ts:178-228](test/messaging-outbox.e2e-spec.ts#L178-L228)
-faz `docker pause` no container do Rabbit, executa a mutação (que commita —
-linha `PENDING` no outbox, `audit_log` vazio), faz `docker unpause`, e
-verifica que o relay drena e o `audit_log` aparece com o `correlationId`
-original. Idempotência: [test/messaging-outbox.e2e-spec.ts:122-176](test/messaging-outbox.e2e-spec.ts#L122-L176).
-DLQ após 5 tentativas: [test/messaging-outbox.e2e-spec.ts:231-268](test/messaging-outbox.e2e-spec.ts#L231-L268).
-Detalhes de trade-off em [ADR-002](docs/adr/0002-transactional-outbox-rabbitmq.md)
-e [ADR-003](docs/adr/0003-consumer-idempotente-retry-dlq.md).
+**Garantias provadas em e2e** (`test/messaging-outbox.e2e-spec.ts`):
+
+| Cenário | Onde |
+|---|---|
+| Mutação + outbox são atômicos (rollback junto)                | linhas 90-119 |
+| Idempotência: reentrega do mesmo `event_id` não duplica audit | linhas 122-176 |
+| **Zero-loss com broker fora** (`docker pause` no Rabbit, mutação commita, broker volta, relay drena, audit aparece com `correlationId` original) | linhas 178-228 |
+| Mensagem vai pra DLQ após 5 tentativas                        | linhas 231-268 |
 
 ---
 
 ## 7. Variáveis de ambiente
 
-Validadas no boot por **Joi** ([src/shared/config/env.validation.ts](src/shared/config/env.validation.ts))
-— boot falha rápido se uma `required` faltar.
+Validadas no boot por **Joi** (`src/shared/config/env.validation.ts`) — boot
+falha rápido se uma `required` faltar. `.env.example` está em sincronia.
 
 | Variável             | Obrigatória | Default          | Descrição |
 |---|---|---|---|
@@ -295,10 +282,6 @@ Validadas no boot por **Joi** ([src/shared/config/env.validation.ts](src/shared/
 | `DB_NAME`            | **sim** | —          | Nome do database |
 | `RABBITMQ_URL`       | **sim** | —          | URI `amqp://…` ou `amqps://…` |
 | `RABBITMQ_EXCHANGE`  | **sim** | —          | Nome do exchange (tópico) usado pelo outbox |
-
-`.env.example` está em sincronia com este schema. Não há segredos reais
-commitados — os valores ali são defaults locais de desenvolvimento
-(`catalog/catalog`, `guest/guest`).
 
 ---
 
@@ -320,34 +303,71 @@ src/
    ├─ application/                        # ports (UnitOfWork, DomainEventPublisher), CorrelationContext, TransactionContext
    ├─ config/                             # AppConfigService + Joi schema
    └─ infra/
-      ├─ database/                        # DataSource + DatabaseModule + migrations + TypeOrmUnitOfWork
+      ├─ database/                        # DataSource + TypeOrmUnitOfWork + migrations
       ├─ messaging/                       # RabbitMQ wiring
       ├─ outbox/                          # OutboxEventPublisher + OutboxRelay (SKIP LOCKED poller)
       ├─ logging/                         # nestjs-pino + BusinessActionLogger
       └─ http/                            # CorrelationIdMiddleware + DomainExceptionFilter + raw-body + Swagger bootstrap
 
 test/                                     # specs e2e (supertest + Testcontainers)
-docs/adr/                                 # Architecture Decision Records
 ```
 
 ---
 
-## 9. Checklist dos desejáveis do enunciado
+## 9. Decisões arquiteturais (resumo)
 
-| Item desejável | Onde |
-|---|---|
-| Documentação Swagger (`@nestjs/swagger`)         | http://localhost:3000/docs |
-| Health check                                     | `GET /health` (terminus, cobre Postgres + Rabbit) |
-| CQRS                                             | `@nestjs/cqrs` em todos os handlers de catalog/audit |
-| Teste de integração do fluxo completo            | [test/catalog-http.e2e-spec.ts:116-196](test/catalog-http.e2e-spec.ts#L116-L196) (lifecycle HTTP + audit_log) |
-| Mensageria confiável (zero-loss + idempotência)  | [test/messaging-outbox.e2e-spec.ts](test/messaging-outbox.e2e-spec.ts) |
-| Logs estruturados + correlationId end-to-end     | [test/observability-correlation.e2e-spec.ts](test/observability-correlation.e2e-spec.ts) |
-| Docker Compose multi-serviço                     | [docker-compose.yml](docker-compose.yml) + overlays dev/prod/smoke |
-| Mutation testing                                 | `npx stryker run` — escopo: domínio |
+- **Clean/Hexagonal por módulo + CQRS** em vez de service-CRUD plano —
+  invariantes do domínio testáveis sem framework, separação clara de
+  intenção (comando muta + emite evento; query projeta).
+- **Transactional Outbox + RabbitMQ** em vez de publish direto pós-commit —
+  resolve o dual-write problem: mutação e evento commitam juntos, ou
+  nenhum. Relay com `SKIP LOCKED` permite escala horizontal sem
+  coordenação.
+- **Consumer idempotente** (tabela `processed_event`) + retry com cap +
+  DLQ — at-least-once no transporte vira exactly-once efetivo no `audit_log`.
+  Poison messages ficam contidas na DLQ.
+- **Unicidade de nome de produto two-layer**: gate de aplicação em
+  `ActivateProductHandler` (mensagem de erro útil) **+** partial unique
+  index `ON product (name) WHERE status = 'ACTIVE'` (rede de segurança
+  contra race entre ativações simultâneas). `DRAFT` homônimos permitidos;
+  `ARCHIVED` libera o nome.
+- **DomainError → HTTP**: **409 uniforme** pra todo conflito de estado
+  (RFC 9110 §15.5.10), `404` só pra `*.not_found`. `code` no body dá
+  granularidade fina sem inflar a matriz status×code.
+- **Observabilidade**: `nestjs-pino` JSON estruturado + `BusinessActionLogger`
+  com envelope canônico `{action, aggregateType, aggregateId, outcome,
+  correlationId, ...}`. `correlationId` propaga em todos os saltos
+  (middleware HTTP → `AsyncLocalStorage` → outbox row → header AMQP →
+  consumer → `audit_log.correlation_id`). **Log ≠ audit_log**: o
+  primeiro é stream volátil pra operação; o segundo é tabela imutável,
+  fonte de verdade do negócio.
+- **Docker Compose base + overlays** (`override` dev, `prod`, `smoke`)
+  + Dockerfile **multi-stage** (`base / build / dev / prod-deps / production`).
+  A imagem final roda como usuário não-root e não carrega `ts-node`,
+  `@nestjs/cli`, ou `webpack` — superfície mínima.
+- **Testes**: dois projects Jest (`unit` rápido sem Docker, `e2e` com
+  Testcontainers reais). `coverageThreshold` por camada gating real no
+  combined run. **Mutation testing** com Stryker apenas no domínio
+  (sinal alto onde a lógica é rica; expandir não pagaria).
 
 ---
 
-## 10. Comandos npm
+## 10. Desejáveis entregues
+
+| Item | Onde |
+|---|---|
+| Documentação Swagger (`@nestjs/swagger`)            | `GET /docs` |
+| Health check                                        | `GET /health` (terminus, cobre Postgres + Rabbit) |
+| CQRS                                                | `@nestjs/cqrs` em todos os handlers de catalog/audit |
+| Teste de integração de fluxo completo               | `test/catalog-http.e2e-spec.ts` (lifecycle HTTP + audit_log) |
+| Mensageria confiável (zero-loss + idempotência)     | `test/messaging-outbox.e2e-spec.ts` |
+| Logs estruturados + correlationId end-to-end        | `test/observability-correlation.e2e-spec.ts` |
+| Docker Compose multi-serviço                        | `docker-compose.yml` + overlays dev/prod/smoke |
+| Mutation testing                                    | `npx stryker run` (escopo: domínio) |
+
+---
+
+## 11. Comandos npm
 
 ```bash
 npm run start:dev        # nest start --watch
