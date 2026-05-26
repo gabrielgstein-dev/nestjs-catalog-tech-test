@@ -34,7 +34,7 @@ Pré-requisitos: **Docker 24+** com Compose v2. Portas livres no host: **3000**
 
 ```bash
 cp .env.example .env
-docker compose up --build
+npm run docker:up
 ```
 
 O Compose espera Postgres e RabbitMQ ficarem **healthy** antes de iniciar o app
@@ -48,18 +48,20 @@ típico do build a `/health` 200: **~15–20 s**.
 | Health check           | http://localhost:3000/health |
 | RabbitMQ management UI | http://localhost:15672 (guest / guest) |
 
-Tear-down (com volumes): `docker compose down -v`.
+Tear-down (com volumes): `npm run docker:down`.
 
-**Smoke isolado da imagem de produção** (portas remapeadas — não colide com
-nada rodando no host):
+**Smoke isolado da imagem de produção** — portas remapeadas (`:3010` app,
+`:5434` postgres, `:5673` + `:15673` rabbit). Use quando alguma das portas
+padrão estiver ocupada por outra stack no host:
 
 ```bash
-docker compose -p catalog-smoke \
-  -f docker-compose.yml -f docker-compose.smoke.yml \
-  up --build -d
-# app :3010, postgres :5434, rabbit :5673 / management :15673
-docker compose -p catalog-smoke -f docker-compose.yml -f docker-compose.smoke.yml down -v
+npm run docker:smoke:up
+# ...
+npm run docker:smoke:down
 ```
+
+Equivalente verboso (caso queira ver o que os scripts fazem por baixo):
+`docker compose -p catalog-smoke -f docker-compose.yml -f docker-compose.smoke.yml up --build`.
 
 ---
 
@@ -370,14 +372,25 @@ test/                                     # specs e2e (supertest + Testcontainer
 ## 11. Comandos npm
 
 ```bash
-npm run start:dev        # nest start --watch
-npm run build            # compila para ./dist
-npm run start:prod       # node dist/main.js
-npm run lint             # ESLint + Prettier (--max-warnings=0)
-npm run typecheck        # tsc --noEmit
-npm test                 # Jest unit (rápido, sem Docker)
-npm run test:e2e         # Jest + Testcontainers (Postgres + RabbitMQ reais)
-npm run test:cov:all     # Coverage combinado com gating de threshold
-npm run migration:run    # roda migrations no DB configurado
-npm run migration:revert # desfaz a última
+# Ambiente completo (Docker Compose)
+npm run docker:up         # sobe app + Postgres + Rabbit (build + healthcheck + migrations)
+npm run docker:down       # derruba tudo e remove volumes
+npm run docker:smoke:up   # variante isolada (portas remapeadas) — quando há conflito no host
+npm run docker:smoke:down # derruba a stack smoke
+
+# App
+npm run start:dev         # nest start --watch (sem Docker, requer Postgres+Rabbit já rodando)
+npm run build             # compila para ./dist
+npm run start:prod        # node dist/main.js
+
+# Qualidade
+npm run lint              # ESLint + Prettier (--max-warnings=0)
+npm run typecheck         # tsc --noEmit
+npm test                  # Jest unit (rápido, sem Docker)
+npm run test:e2e          # Jest + Testcontainers (Postgres + RabbitMQ reais)
+npm run test:cov:all      # Coverage combinado unit+e2e com gating de threshold
+
+# Migrations
+npm run migration:run     # roda migrations no DB configurado
+npm run migration:revert  # desfaz a última
 ```
